@@ -22,7 +22,7 @@ sealed class RecorderEvent {
  */
 class Recorder(
     private val collectors: List<Collector>,
-    private val trigger: Trigger,
+    private val trigger: Trigger?,
     private val fileDataset: FileDataset,
     private val uploader: Uploader,
 ) {
@@ -34,21 +34,25 @@ class Recorder(
     val eventFlow = MutableSharedFlow<RecorderEvent>()
 
     suspend fun start(vararg path: String) {
-        onStart()
-        trigger.start()
-        handleTriggerEvent(path)
-        trigger.join()
-        onStop()
+        if (trigger != null) {
+            onStart()
+            trigger.start()
+            handleTriggerEvent(path)
+            trigger.join()
+            onStop()
+        } else {
+            startSample(path)
+        }
     }
 
     fun stop() {
         stopSample()
-        trigger.stop()
+        trigger?.stop()
     }
 
     private fun handleTriggerEvent(path: Array<out String>) {
         listenJob = scope.launch {
-            trigger.eventFlow.collect { event ->
+            trigger?.eventFlow?.collect { event ->
                 when (event) {
                     TriggerEvent.Idle -> {}
                     TriggerEvent.Begin -> startSample(path)
@@ -60,7 +64,11 @@ class Recorder(
 
     private fun onStart() {
         scope.launch {
-            eventFlow.emit(RecorderEvent.Start(trigger.sampleCount))
+            if (trigger != null) {
+                eventFlow.emit(RecorderEvent.Start(trigger.sampleCount))
+            } else {
+                eventFlow.emit(RecorderEvent.Start(-1))
+            }
         }
         sampleId = 0
         recordingSample = false
