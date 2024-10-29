@@ -2,6 +2,7 @@ package com.hcifuture.producer.recorder
 
 import android.content.Context
 import com.hcifuture.producer.recorder.recorders.AllDataRecorder
+import com.hcifuture.producer.recorder.recorders.CogRecorder
 import com.hcifuture.producer.recorder.recorders.ImuRecorder
 import com.hcifuture.producer.recorder.triggers.FixedDurationTrigger
 import com.hcifuture.producer.sensor.NuixSensorManager
@@ -41,6 +42,16 @@ class RecorderProvider @Inject constructor(
             fileDatasetProvider,
             uploaderProvider,
             "Imu",
+        )
+    }
+
+    fun createCogRecorder(): Recorder {
+        return CogRecorder.create(
+            context,
+            nuixSensorManager,
+            fileDatasetProvider,
+            uploaderProvider,
+            "Cog",
         )
     }
 }
