@@ -1,8 +1,13 @@
 package com.hcifuture.producer.detector.utils
 
+import android.util.Log
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 class MadgwickFilter(val beta: Float, var q: Quaternion, val frequency: Float) {
+    private var initalized = false
     fun update(imu: List<Float>) {
         var acc = Vector3(imu[0], imu[1], imu[2])
         val gyr = Vector3(imu[3], imu[4], imu[5])
@@ -10,6 +15,17 @@ class MadgwickFilter(val beta: Float, var q: Quaternion, val frequency: Float) {
             return
         }
         acc /= acc.len()
+        if (!initalized) {
+            initalized = true
+            val ex = atan2(acc.y, acc.z)
+            val ey = atan2(-acc.x, sqrt(acc.y * acc.y + acc.z * acc.z))
+            val cx2 = cos(ex / 2.0f)
+            val sx2 = sin(ex / 2.0f)
+            val cy2 = cos(ey / 2.0f)
+            val sy2 = sin(ey / 2.0f)
+            q = Quaternion(cx2 * cy2, sx2 * cy2, cx2 * sy2, -sx2 * sy2).unit()
+            return
+        }
         val f = Vector3(
             2 * (q.x * q.z - q.w * q.y) - acc.x,
             2 * (q.w * q.x + q.y * q.z) - acc.y,

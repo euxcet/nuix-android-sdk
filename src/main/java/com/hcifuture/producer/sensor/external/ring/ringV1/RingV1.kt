@@ -42,7 +42,7 @@ class RingV1(
     private lateinit var sppWriteCharacteristic: ClientBleGattCharacteristic
     private lateinit var notifyReadCharacteristic: ClientBleGattCharacteristic
     private lateinit var notifyWriteCharacteristic: ClientBleGattCharacteristic
-    private lateinit var connection: ClientBleGatt
+    private var connection: ClientBleGatt? = null
     private var count = 0
     private val _imuFlow = MutableSharedFlow<RingImuData>()
     private val _touchFlow = MutableSharedFlow<RingTouchData>()
@@ -81,12 +81,12 @@ class RingV1(
         connectJob = scope.launch {
             try {
                 connection = ClientBleGatt.connect(context, address, scope)
-                if (!connection.isConnected) {
+                if (!connection!!.isConnected) {
                     status = NuixSensorState.DISCONNECTED
                     return@launch
                 }
                 status = NuixSensorState.CONNECTED
-                val services = connection.discoverServices()
+                val services = connection!!.discoverServices()
                 var sppService: ClientBleGattService = services.findService(RingV1Spec.SPP_SERVICE_UUID)!!
                 val notifyService = services.findService(RingV1Spec.NOTIFY_SERVICE_UUID)!!
                 sppReadCharacteristic = sppService.findCharacteristic(RingV1Spec.SPP_READ_CHARACTERISTIC_UUID)!!
@@ -112,7 +112,7 @@ class RingV1(
 
                 scope.launch {
                     while (true) {
-                        if (!connection.isConnected) {
+                        if (!connection!!.isConnected) {
                             sppJob.cancel()
                             notifyJob.cancel()
                             disconnect()
@@ -146,7 +146,7 @@ class RingV1(
         if (!disconnectable()) return
         countJob.cancel()
         connectJob.cancel()
-        connection.disconnect()
+        connection?.disconnect()
         status = NuixSensorState.DISCONNECTED
     }
 

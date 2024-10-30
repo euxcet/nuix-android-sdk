@@ -46,7 +46,7 @@ class WordDetector @Inject constructor(
     private val moveData = Array(13) { FloatArray(6) { 0.0f } }
     private val accXData = FloatArray(50)
     private var touchState = TouchState.UP
-    val filter: MadgwickFilter = MadgwickFilter(0.1f, Quaternion(0.012f, -0.825f, 0.538f, 0.174f), 200.0f)
+    val filter: MadgwickFilter = MadgwickFilter(0.033f, Quaternion(0.012f, -0.825f, 0.538f, 0.174f), 200.0f)
     private var orientation = filter.q.copy()
     private val trajectory = mutableListOf<List<Float>>()
 
@@ -96,6 +96,52 @@ class WordDetector @Inject constructor(
             FloatArray(128),
             longArrayOf(1, 1, 128)
         ))
+
+//        for (i in 0..5) {
+//            filter.update(listOf(-9.82976f, 0.0f, -0.16758f, -0.0319f, 0.00213f, 0.03515f))
+//        }
+//
+//        orientation = filter.q.copy()
+//        for (i in 0 until 12) {
+//            for (j in 0 until 6) {
+//                moveData[i][j] = moveData[i + 1][j]
+//            }
+//        }
+//        val x =  2.0f * (orientation.x * orientation.z - orientation.w * orientation.y) * GRAVITY
+//        val y = 2.0f * (orientation.y * orientation.z + orientation.w * orientation.x) * GRAVITY
+//        val z = (orientation.w * orientation.w - orientation.x * orientation.x - orientation.y * orientation.y + orientation.z * orientation.z) * GRAVITY
+//        Log.e("TTT", "$x $y $z")
+
+//        // for test
+//        var inputTensor = Tensor.fromBlob(
+//            moveData.flatMap { it.toList() }.toFloatArray(),
+//            longArrayOf(1, 13, 6)
+//        )
+//        var outputTensor = moveModel.forward(
+//            IValue.from(inputTensor),
+//            IValue.tupleFrom(hx0, hx1),
+//        ).toTuple()
+//        var output = outputTensor[0].toTensor().dataAsFloatArray
+//        var deltaX = output[0]
+//        var deltaY = output[1]
+//        val hx = outputTensor[1].toTuple()
+//        hx0 = hx[0]
+//        hx1 = hx[1]
+//
+//        Log.e("Nuix", "Delta $deltaX $deltaY")
+//        inputTensor = Tensor.fromBlob(
+//            moveData.flatMap { it.toList() }.toFloatArray(),
+//            longArrayOf(1, 13, 6)
+//        )
+//        outputTensor = moveModel.forward(
+//            IValue.from(inputTensor),
+//            IValue.tupleFrom(hx0, hx1),
+//        ).toTuple()
+//        output = outputTensor[0].toTensor().dataAsFloatArray
+//        deltaX = output[0]
+//        deltaY = output[1]
+//        Log.e("Nuix", "Delta $deltaX $deltaY")
+
         scope.launch {
             nuixSensorManager.defaultRing.getProxyFlow<RingImuData>(
                 RingSpec.imuFlowName(nuixSensorManager.defaultRing)
@@ -110,6 +156,7 @@ class WordDetector @Inject constructor(
                     accXData[i] = accXData[i + 1]
                 }
                 accXData[49] = imu.data[0]
+
                 filter.update(
                     listOf(
                         imu.data[0], imu.data[1], imu.data[2],
@@ -117,17 +164,17 @@ class WordDetector @Inject constructor(
                     )
                 )
                 orientation = filter.q.copy()
-                for (i in 0 until 6) {
-                    for (j in 0 until 12) {
-                        moveData[j][i] = moveData[j + 1][i]
+                for (i in 0 until 12) {
+                    for (j in 0 until 6) {
+                        moveData[i][j] = moveData[i + 1][j]
                     }
                 }
                 moveData[12][0] =
-                    imu.data[0] - (2.0f * (orientation.x * orientation.z - orientation.w * orientation.y) * GRAVITY)
+                     imu.data[0] - 2.0f * (orientation.x * orientation.z - orientation.w * orientation.y) * GRAVITY
                 moveData[12][1] =
-                    imu.data[1] - (2.0f * (orientation.y * orientation.z + orientation.w * orientation.x) * GRAVITY)
+                     imu.data[1] - 2.0f * (orientation.y * orientation.z + orientation.w * orientation.x) * GRAVITY
                 moveData[12][2] =
-                    imu.data[2] - ((orientation.w * orientation.w - orientation.x * orientation.x - orientation.y * orientation.y + orientation.z * orientation.z) * GRAVITY)
+                     imu.data[2] - (orientation.w * orientation.w - orientation.x * orientation.x - orientation.y * orientation.y + orientation.z * orientation.z) * GRAVITY
                 moveData[12][3] = imu.data[3]
                 moveData[12][4] = imu.data[4]
                 moveData[12][5] = imu.data[5]

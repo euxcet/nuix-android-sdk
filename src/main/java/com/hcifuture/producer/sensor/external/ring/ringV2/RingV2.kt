@@ -86,15 +86,15 @@ class RingV2(
         if (!connectable()) return
         status = NuixSensorState.CONNECTING
         countJob = scope.launch {
-            while (true) {
-                delay(5000)
-                if (count == 0) {
-                    disconnect()
-                } else {
-                    Log.e("Nuix", "Ring fps: ${count / 5}")
-                    count = 0
-                }
-            }
+//            while (true) {
+//                delay(5000)
+//                if (count == 0) {
+//                    disconnect()
+//                } else {
+//                    Log.e("Nuix", "Ring fps: ${count / 5}")
+//                    count = 0
+//                }
+//            }
         }
         connectJob = scope.launch {
             try {

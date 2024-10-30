@@ -23,7 +23,7 @@ class OrientationDetector @Inject constructor(
 ) {
     private val scope = CoroutineScope(Dispatchers.Default)
     val eventFlow = MutableSharedFlow<Pair<Float, Float>>(replay = 0)
-    val filter: MadgwickFilter = MadgwickFilter(0.1f, Quaternion(0.012f, -0.825f, 0.538f, 0.174f), 200.0f)
+    val filter: MadgwickFilter = MadgwickFilter(0.033f, Quaternion(0.012f, -0.825f, 0.538f, 0.174f), 200.0f)
     private val queue = mutableListOf<Quaternion>()
     private var count = 0
 
