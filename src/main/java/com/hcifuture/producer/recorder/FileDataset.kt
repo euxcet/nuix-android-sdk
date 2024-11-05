@@ -3,7 +3,12 @@ package com.hcifuture.producer.recorder
 import android.util.Log
 import com.hcifuture.producer.common.utils.FileUtils.Companion.loadVisibleFile
 import java.io.File
+import java.text.SimpleDateFormat
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.Collections
+import java.util.Date
+import java.util.Locale
 
 class FileDataset(
     val root: File,
@@ -103,7 +108,8 @@ class FileDataset(
         if (!dir.exists()) {
             dir.mkdirs()
         }
-        val timestamp = System.currentTimeMillis()
+        val formatter = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm_ss")
+        val timestamp = LocalDateTime.now().format(formatter)
         val files = collectors.map {
             File(dir, "${timestamp}_${it.suffixName}")
         }
