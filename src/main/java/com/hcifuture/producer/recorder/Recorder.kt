@@ -32,6 +32,7 @@ class Recorder(
     private var sampleId: Int = 0
     private var recordingSample: Boolean = false
     val eventFlow = MutableSharedFlow<RecorderEvent>()
+    private var currentPath: Array<out String>? = null
 
     suspend fun start(vararg path: String) {
         if (trigger != null) {
@@ -89,6 +90,7 @@ class Recorder(
         if (recordingSample) {
             return
         }
+        currentPath = path
         recordingSample = true
         scope.launch {
             eventFlow.emit(RecorderEvent.StartSample(sampleId))
@@ -116,5 +118,17 @@ class Recorder(
             }
             eventFlow.emit(RecorderEvent.StopSample(sampleId, files))
         }
+    }
+
+    fun getStoragePath(): File {
+        return if (currentPath == null) {
+            fileDataset.root
+        } else {
+            File(fileDataset.root, currentPath!!.joinToString(separator = File.separator))
+        }
+    }
+
+    fun uploadFile(file: File) {
+        fileDataset.addDataFile(file)
     }
 }

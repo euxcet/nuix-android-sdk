@@ -74,7 +74,7 @@ class RingV2(
     private lateinit var countJob: Job
     private lateinit var connectJob: Job
     private var readJob: Job? = null
-    private var commandJob: Job? = null
+//    private var commandJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
 
@@ -261,25 +261,26 @@ class RingV2(
                     }
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
-                commandJob = scope.launch {
+//                commandJob = scope.launch {
                     write(RingV2Spec.GET_BATTERY_LEVEL)
                     write(RingV2Spec.GET_HARDWARE_VERSION)
                     write(RingV2Spec.GET_SOFTWARE_VERSION)
                     write(RingV2Spec.OPEN_6AXIS_IMU)
                     status = NuixSensorState.CONNECTED
                     Log.e("Nuix", "RingV2[${address}] connected")
-                }
-                scope.launch {
-                    delay(3000)
-                    if (status != NuixSensorState.CONNECTED) {
-                        disconnect()
-                    }
-                }
+//                }
             }
             catch (e: Exception) {
                 Log.e("Nuix", "Error $e")
                 disconnect()
                 return@launch
+            }
+        }
+        scope.launch {
+            delay(4000)
+            if (status != NuixSensorState.CONNECTED) {
+                Log.e("Nuix", "Error: Timeout")
+                disconnect()
             }
         }
     }
@@ -289,7 +290,7 @@ class RingV2(
         Log.e("Nuix", "Manual disconnect")
         connection?.disconnect()
         readJob?.cancel()
-        commandJob?.cancel()
+//        commandJob?.cancel()
         countJob.cancel()
         connectJob.cancel()
         status = NuixSensorState.DISCONNECTED
