@@ -134,8 +134,8 @@ class VideoRecordProcessor(
     @SuppressLint("MissingPermission")
     private fun initVideoCapture() {
         val qualitySelector = QualitySelector.fromOrderedList(
-            listOf(Quality.HD, Quality.SD),
-            FallbackStrategy.lowerQualityOrHigherThan(Quality.SD))
+            listOf(Quality.LOWEST),
+            FallbackStrategy.lowerQualityOrHigherThan(Quality.LOWEST))
         val recorder: Recorder = Recorder.Builder().setQualitySelector(qualitySelector).setAspectRatio(
             AspectRatio.RATIO_16_9
         ).build()

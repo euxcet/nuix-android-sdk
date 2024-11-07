@@ -42,10 +42,10 @@ class VideoSensor(val context: Context): NuixSensor() {
     override fun connect() {}
 
     fun connect(
-        cameraLens: Int,
         previewSurface: Surface?,
-        width: Int,
-        height: Int,
+        cameraLens: Int = CameraSelector.LENS_FACING_BACK,
+//        width: Int,
+//        height: Int,
     ) {
         if (status !in listOf(NuixSensorState.SCANNING, NuixSensorState.DISCONNECTED)) {
             return
@@ -57,7 +57,7 @@ class VideoSensor(val context: Context): NuixSensor() {
         videoServiceConnection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: android.os.IBinder?) {
                 mVideoServiceRemote = IVideoService.Stub.asInterface(service)
-                mVideoServiceRemote?.bindCamera(cameraLens, previewSurface, width, height)
+                mVideoServiceRemote?.bindCamera(cameraLens, previewSurface, 0, 0)
                 status = NuixSensorState.CONNECTED
             }
 

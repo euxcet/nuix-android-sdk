@@ -31,7 +31,10 @@ class CogRecorder {
                 .onEach {
                     collectors.addAll(it.defaultCollectors.values)
                 }
-            nuixSensorManager.audios().onEach {
+//            nuixSensorManager.audios().onEach {
+//                collectors.addAll(it.defaultCollectors.values)
+//            }
+            nuixSensorManager.videos().onEach {
                 collectors.addAll(it.defaultCollectors.values)
             }
             if (nuixSensorManager.defaultRing.target != null) {

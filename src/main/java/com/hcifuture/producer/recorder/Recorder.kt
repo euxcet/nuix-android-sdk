@@ -3,6 +3,7 @@ package com.hcifuture.producer.recorder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -112,11 +113,14 @@ class Recorder(
             for (collector in collectors) {
                 val file = collector.stopAsync()
                 file?.let {
-                    fileDataset.addDataFile(file)
                     files.add(file)
                 }
             }
             eventFlow.emit(RecorderEvent.StopSample(sampleId, files))
+            delay(2000)
+            for (file in files) {
+                fileDataset.addDataFile(file)
+            }
         }
     }
 

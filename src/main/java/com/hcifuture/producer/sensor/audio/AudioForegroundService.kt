@@ -19,10 +19,12 @@ import java.time.format.DateTimeFormatter
 
 class AudioForegroundService : Service() {
 
-    val NOTIFICATION_ID = 321
-    val CHANNEL_ID = "AudioChannel"
-    val CHANNEL_NAME = "AudioChannel"
-    val TAG = "AudioForegroundService"
+    companion object {
+        const val NOTIFICATION_ID = 321
+        const val CHANNEL_ID = "AudioChannel"
+        const val CHANNEL_NAME = "AudioChannel"
+        const val TAG = "AudioForegroundService"
+    }
 
     private var mNotificationManager: NotificationManager? = null
     private val mainHandler: Handler by lazy {
@@ -44,9 +46,8 @@ class AudioForegroundService : Service() {
             createNotification(),
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            } else {
-                0
-        } )
+            } else { 0 }
+        )
 
         return object: IAudioService.Stub() {
 
@@ -74,20 +75,6 @@ class AudioForegroundService : Service() {
         notificationManager.createNotificationChannel(notificationChannel)
         return NotificationCompat.Builder(this, CHANNEL_ID).build()
     }
-
-//    private fun createNotification(title: String, content: String): Notification {
-//        if (mNotificationManager == null) {
-//            mNotificationManager = getSystemService(Service.NOTIFICATION_SERVICE) as NotificationManager
-//        }
-//        val notification: Notification =
-//            NotificationCompat.Builder(this, "NORMAL_SERVICE")
-//                .setContentTitle(title)
-//                .setContentText(content)
-//                .setPriority(NotificationCompat.PRIORITY_HIGH)
-//                .build()
-//        notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT
-//        return notification
-//    }
 
     private fun fileTimeFormat(time: LocalDateTime): String {
         val myDateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss")

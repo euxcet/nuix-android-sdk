@@ -4,12 +4,5 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <application>
-        <service
-            android:name=".sensor.video.VideoForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="camera|microphone"/>
-        <service android:name=".sensor.audio.AudioForegroundService"
-            android:exported="false"
-            android:foregroundServiceType="microphone"/>
     </application>
 </manifest>
