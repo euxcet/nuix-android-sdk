@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.util.Log
 import com.hcifuture.producer.IAudioService
 import com.hcifuture.producer.recorder.Collector
 import com.hcifuture.producer.recorder.collectors.AudioCollector
@@ -40,15 +41,18 @@ class AudioSensor (
     )
 
     override fun connect() {
+        Log.e("Nuix", "[AUDIO] Connecting")
         if (!connectable()) return
         status = NuixSensorState.CONNECTING
         audioServiceConnection = object : ServiceConnection {
             override fun onServiceConnected(name: ComponentName?, service: android.os.IBinder?) {
                 mAudioServiceRemote = IAudioService.Stub.asInterface(service)
+                Log.e("Nuix", "[AUDIO] CONNECTED")
                 status = NuixSensorState.CONNECTED
             }
             override fun onServiceDisconnected(name: ComponentName?) {
                 mAudioServiceRemote = null
+                Log.e("Nuix", "[AUDIO] DISCONNECTED")
                 status = NuixSensorState.DISCONNECTED
             }
         }
