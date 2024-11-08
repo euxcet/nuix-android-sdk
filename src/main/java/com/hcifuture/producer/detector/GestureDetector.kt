@@ -68,14 +68,17 @@ class GestureDetector @Inject constructor(
                         pinchDown = false
                     }
                     if (labels[result] in arrayOf("pinch", "middle_pinch", "clap", "snap",
-                            "tap_plane", "tap_air", "circle_clockwise", "circle_counterclockwise",
-                            "touch_ring", "touch_up", "touch_down")) {
+                        "tap_plane", "tap_air", "circle_clockwise", "circle_counterclockwise",
+                        "touch_ring", "touch_up", "touch_down")) {
                         eventFlow.emit(labels[result])
                         for (i in 0 until 6) {
                             for (j in 0 until 199) {
                                 data[i][j] = data[i][199]
                             }
                         }
+                    } else if (labels[result] in arrayOf("wave_right", "wave_down", "wave_left", "wave_up",
+                            "pinch_down", "pinch_up", "push_forward", "index_flick")) {
+                        eventFlow.emit(labels[result])
                     }
                 }
             }
