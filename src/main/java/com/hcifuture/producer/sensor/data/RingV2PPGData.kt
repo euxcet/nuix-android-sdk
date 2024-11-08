@@ -18,7 +18,8 @@ class RingV2PPGData(
     val raw: List<Byte>,
 ): BytesData {
     override fun toBytes(): ByteArray {
-        val byteBuffer = ByteBuffer.allocate(4 + raw.size)
+        val byteBuffer = ByteBuffer.allocate(2 + 1 + raw.size)
+        byteBuffer.putShort((1 + raw.size).toShort())
         byteBuffer.put(type.toByte())
         byteBuffer.put(raw.toByteArray())
         return byteBuffer.array()

@@ -3,6 +3,7 @@ package com.hcifuture.producer.sensor.audio
 import android.content.Context
 import android.media.MediaRecorder
 import android.os.Build
+import android.util.Log
 import java.io.File
 
 class AudioRecordProcessor(
@@ -17,6 +18,7 @@ class AudioRecordProcessor(
         } else {
             MediaRecorder()
         }
+        Log.e("NUIX", "[AUDIO] setup media recorder ${Build.VERSION.SDK_INT}")
         mediaRecorder.apply {
             setAudioSource(MediaRecorder.AudioSource.MIC)
             setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
@@ -27,6 +29,7 @@ class AudioRecordProcessor(
     }
 
     fun startRecord(savedFile: File) {
+        Log.e("NUIX", "[AUDIO] start record")
         if (record != null) {
             record?.stop()
             record?.release()
@@ -38,6 +41,7 @@ class AudioRecordProcessor(
     }
 
     fun stopRecord() {
+        Log.e("NUIX", "[AUDIO] stop record")
         record?.apply {
             stop()
             release()

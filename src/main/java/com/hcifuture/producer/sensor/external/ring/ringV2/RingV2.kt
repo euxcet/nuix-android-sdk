@@ -31,6 +31,7 @@ import no.nordicsemi.android.common.core.DataByteArray
 import no.nordicsemi.android.kotlin.ble.client.main.callback.ClientBleGatt
 import no.nordicsemi.android.kotlin.ble.client.main.service.ClientBleGattCharacteristic
 import no.nordicsemi.android.kotlin.ble.core.data.BleWriteType
+import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
 import java.util.Arrays
 import kotlin.experimental.and
 
@@ -73,6 +74,7 @@ class RingV2(
     private lateinit var countJob: Job
     private lateinit var connectJob: Job
     private var readJob: Job? = null
+//    private var commandJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
 
@@ -98,6 +100,7 @@ class RingV2(
         }
         connectJob = scope.launch {
             try {
+                Log.e("Nuix", "RingV2[${address}] connecting")
                 connection = ClientBleGatt.connect(context, address, scope)
                 connection?.requestMtu(247)
                 if (!connection!!.isConnected) {
@@ -105,9 +108,16 @@ class RingV2(
                     return@launch
                 }
 
+                connection!!.connectionState.onEach {
+                    if (it == GattConnectionState.STATE_DISCONNECTED) {
+                        disconnect()
+                    }
+                }.launchIn(scope)
+
                 val service = connection!!.discoverServices().findService(RingV2Spec.SERVICE_UUID)!!
                 readCharacteristic = service.findCharacteristic(RingV2Spec.READ_CHARACTERISTIC_UUID)!!
                 writeCharacteristic = service.findCharacteristic(RingV2Spec.WRITE_CHARACTERISTIC_UUID)!!
+                Log.e("Nuix", "RingV2[${address}] get characteristic")
                 readJob = readCharacteristic.getNotifications().onEach {
                     val cmd = it.value[2]
                     val subCmd = it.value[3]
@@ -250,16 +260,27 @@ class RingV2(
                         }
                     }
                 }.launchIn(scope)
-                write(RingV2Spec.GET_BATTERY_LEVEL)
-                write(RingV2Spec.GET_HARDWARE_VERSION)
-                write(RingV2Spec.GET_SOFTWARE_VERSION)
-                write(RingV2Spec.OPEN_6AXIS_IMU)
-                status = NuixSensorState.CONNECTED
+                Log.e("Nuix", "RingV2[${address}] send commands")
+//                commandJob = scope.launch {
+                    write(RingV2Spec.GET_BATTERY_LEVEL)
+                    write(RingV2Spec.GET_HARDWARE_VERSION)
+                    write(RingV2Spec.GET_SOFTWARE_VERSION)
+                    write(RingV2Spec.OPEN_6AXIS_IMU)
+                    status = NuixSensorState.CONNECTED
+                    Log.e("Nuix", "RingV2[${address}] connected")
+//                }
             }
             catch (e: Exception) {
                 Log.e("Nuix", "Error $e")
                 disconnect()
                 return@launch
+            }
+        }
+        scope.launch {
+            delay(4000)
+            if (status != NuixSensorState.CONNECTED) {
+                Log.e("Nuix", "Error: Timeout")
+                disconnect()
             }
         }
     }
@@ -268,6 +289,8 @@ class RingV2(
         if (!disconnectable()) return
         Log.e("Nuix", "Manual disconnect")
         connection?.disconnect()
+        readJob?.cancel()
+//        commandJob?.cancel()
         countJob.cancel()
         connectJob.cancel()
         status = NuixSensorState.DISCONNECTED

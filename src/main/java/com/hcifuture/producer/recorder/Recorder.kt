@@ -3,6 +3,7 @@ package com.hcifuture.producer.recorder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.io.File
@@ -32,6 +33,7 @@ class Recorder(
     private var sampleId: Int = 0
     private var recordingSample: Boolean = false
     val eventFlow = MutableSharedFlow<RecorderEvent>()
+    private var currentPath: Array<out String>? = null
 
     suspend fun start(vararg path: String) {
         if (trigger != null) {
@@ -89,6 +91,7 @@ class Recorder(
         if (recordingSample) {
             return
         }
+        currentPath = path
         recordingSample = true
         scope.launch {
             eventFlow.emit(RecorderEvent.StartSample(sampleId))
@@ -110,11 +113,26 @@ class Recorder(
             for (collector in collectors) {
                 val file = collector.stopAsync()
                 file?.let {
-                    fileDataset.addDataFile(file)
                     files.add(file)
                 }
             }
             eventFlow.emit(RecorderEvent.StopSample(sampleId, files))
+            delay(2000)
+            for (file in files) {
+                fileDataset.addDataFile(file)
+            }
         }
+    }
+
+    fun getStoragePath(): File {
+        return if (currentPath == null) {
+            fileDataset.root
+        } else {
+            File(fileDataset.root, currentPath!!.joinToString(separator = File.separator))
+        }
+    }
+
+    fun uploadFile(file: File) {
+        fileDataset.addDataFile(file)
     }
 }

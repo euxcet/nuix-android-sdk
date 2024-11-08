@@ -180,7 +180,6 @@ class NuixSensorManager @Inject constructor(
     }
 
     private fun refreshDefaultSensors() {
-        Log.e("Nuix", "Refresh default sensors")
         defaultRingV1.switchTarget(defaultRingV1())
         defaultRingV2.switchTarget(defaultRingV2())
         defaultRing.switchTarget(defaultRing())

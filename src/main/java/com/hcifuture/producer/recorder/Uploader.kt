@@ -79,12 +79,17 @@ class Uploader(
             val zipFile = fileDataset.prepareZipFile()
             ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
                 for (file in files) {
-                    FileInputStream(file).use { fi ->
-                        BufferedInputStream(fi).use { origin ->
-                            val entry = ZipEntry(fileDataset.getPath(file))
-                            out.putNextEntry(entry)
-                            origin.copyTo(out, 1024)
+                    try {
+                        FileInputStream(file).use { fi ->
+                            BufferedInputStream(fi).use { origin ->
+                                val entry = ZipEntry(fileDataset.getPath(file))
+                                out.putNextEntry(entry)
+                                origin.copyTo(out, 1024)
+                            }
                         }
+                    }
+                    catch(e: Exception) {
+                        Log.e("Nuix", "ERROR ${e.message}")
                     }
                 }
             }

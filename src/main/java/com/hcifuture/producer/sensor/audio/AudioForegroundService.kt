@@ -2,12 +2,16 @@ package com.hcifuture.producer.sensor.audio
 
 import android.annotation.SuppressLint
 import android.app.Notification
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.app.ServiceCompat
 import com.hcifuture.producer.IAudioService
 import java.io.File
 import java.time.LocalDateTime
@@ -15,8 +19,12 @@ import java.time.format.DateTimeFormatter
 
 class AudioForegroundService : Service() {
 
-    val NOTIFICATION_ID = 321
-    val TAG = "AudioForegroundService"
+    companion object {
+        const val NOTIFICATION_ID = 321
+        const val CHANNEL_ID = "AudioChannel"
+        const val CHANNEL_NAME = "AudioChannel"
+        const val TAG = "AudioForegroundService"
+    }
 
     private var mNotificationManager: NotificationManager? = null
     private val mainHandler: Handler by lazy {
@@ -31,7 +39,16 @@ class AudioForegroundService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder {
-        startForeground(NOTIFICATION_ID, createNotification("Assistant", "正在使用麦克风"))
+
+        ServiceCompat.startForeground(
+            this,
+            NOTIFICATION_ID,
+            createNotification(),
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            } else { 0 }
+        )
+
         return object: IAudioService.Stub() {
 
             @SuppressLint("MissingPermission")
@@ -51,18 +68,12 @@ class AudioForegroundService : Service() {
         }
     }
 
-    private fun createNotification(title: String, content: String): Notification {
-        if (mNotificationManager == null) {
-            mNotificationManager = getSystemService(Service.NOTIFICATION_SERVICE) as NotificationManager
-        }
-        val notification: Notification =
-            NotificationCompat.Builder(this, "NORMAL_SERVICE")
-                .setContentTitle(title)
-                .setContentText(content)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .build()
-        notification.flags = notification.flags or Notification.FLAG_ONGOING_EVENT
-        return notification
+    private fun createNotification(): Notification {
+        val notificationChannel =
+            NotificationChannel(CHANNEL_ID, CHANNEL_NAME, NotificationManager.IMPORTANCE_DEFAULT)
+        val notificationManager = getSystemService(NotificationManager::class.java)
+        notificationManager.createNotificationChannel(notificationChannel)
+        return NotificationCompat.Builder(this, CHANNEL_ID).build()
     }
 
     private fun fileTimeFormat(time: LocalDateTime): String {
