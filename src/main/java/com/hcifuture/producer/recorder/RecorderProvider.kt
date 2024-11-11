@@ -45,13 +45,18 @@ class RecorderProvider @Inject constructor(
         )
     }
 
-    fun createCogRecorder(): Recorder {
+    fun createCogRecorder(
+        userId: String?,
+        taskId: String?,
+    ): Recorder {
         return CogRecorder.create(
             context,
             nuixSensorManager,
             fileDatasetProvider,
             uploaderProvider,
             "Cog",
+            userId,
+            taskId,
         )
     }
 }

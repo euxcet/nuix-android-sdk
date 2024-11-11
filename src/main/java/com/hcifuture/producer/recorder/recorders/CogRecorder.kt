@@ -17,8 +17,10 @@ class CogRecorder {
             fileDatasetProvider: FileDatasetProvider,
             uploaderProvider: UploaderProvider,
             datasetName: String,
+            userId: String?,
+            taskId: String?,
         ): Recorder {
-            val fileDataset = fileDatasetProvider.create(datasetName)
+            val fileDataset = fileDatasetProvider.create(datasetName, userId, taskId)
             val uploader = uploaderProvider.create(fileDataset)
             val collectors: MutableList<Collector> = mutableListOf()
             nuixSensorManager.internalSensors()
@@ -31,9 +33,6 @@ class CogRecorder {
                 .onEach {
                     collectors.addAll(it.defaultCollectors.values)
                 }
-//            nuixSensorManager.audios().onEach {
-//                collectors.addAll(it.defaultCollectors.values)
-//            }
             nuixSensorManager.videos().onEach {
                 collectors.addAll(it.defaultCollectors.values)
             }

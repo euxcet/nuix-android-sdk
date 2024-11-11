@@ -25,9 +25,14 @@ class FileDatasetProvider @Inject constructor(
     private fun load() {
     }
 
-    private fun createDataset(name: String, path: File): FileDataset {
+    private fun createDataset(
+        name: String,
+        path: File,
+        userId: String? = null,
+        taskId: String? = null,
+    ): FileDataset {
         datasets.find { it.name == name}?.let { return it }
-        val dataset = FileDataset(path, name)
+        val dataset = FileDataset(path, name, userId, taskId)
         datasets.add(dataset)
         return dataset
     }
@@ -36,8 +41,12 @@ class FileDatasetProvider @Inject constructor(
         return createDataset(ROOT_DATASET_NAME, root)
     }
 
-    fun create(name: String): FileDataset {
-        return createDataset(name, File(root, name))
+    fun create(
+        name: String,
+        userId: String? = null,
+        taskId: String? = null,
+    ): FileDataset {
+        return createDataset(name, File(root, name), userId, taskId)
     }
 
     fun get(name: String): FileDataset? =

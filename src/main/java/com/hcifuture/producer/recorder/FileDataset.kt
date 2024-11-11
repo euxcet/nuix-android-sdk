@@ -12,7 +12,9 @@ import java.util.Locale
 
 class FileDataset(
     val root: File,
-    val name: String
+    val name: String,
+    val userId: String?,
+    val taskId: String?,
 ) {
     private val dataFiles: MutableSet<File> = Collections.synchronizedSet(mutableSetOf())
     private val zipFiles: MutableSet<File> = mutableSetOf()
@@ -111,7 +113,7 @@ class FileDataset(
         val formatter = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm_ss")
         val timestamp = LocalDateTime.now().format(formatter)
         val files = collectors.map {
-            File(dir, "${timestamp}_${it.suffixName}")
+            File(dir, "${userId}_${taskId}_${it.suffixName}_${timestamp}")
         }
         assert(files.all { !it.exists() })
         return files
