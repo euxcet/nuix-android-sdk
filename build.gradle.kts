@@ -87,7 +87,10 @@ dependencies {
     implementation("org.pytorch:pytorch_android_torchvision_lite:2.1.0")
 
     implementation("no.nordicsemi.android.kotlin.ble:scanner:1.0.14")
-    implementation("no.nordicsemi.android.kotlin.ble:client:1.0.14")
+//    implementation("no.nordicsemi.android.kotlin.ble:client:1.0.14")
+
+    implementation("no.nordicsemi.android:ble-ktx:2.9.0")
+    implementation("no.nordicsemi.android:ble-common:2.9.0")
 
     // CameraX core library using the camera2 implementation
     val camerax_version = "1.3.2"

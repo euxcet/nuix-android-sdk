@@ -1,6 +1,8 @@
 package com.hcifuture.producer.sensor.external.ring.ringV1
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGattCharacteristic
 import android.content.Context
 import android.util.Log
 import com.hcifuture.producer.recorder.Collector
@@ -10,6 +12,7 @@ import com.hcifuture.producer.sensor.NuixSensorSpec
 import com.hcifuture.producer.sensor.NuixSensorState
 import com.hcifuture.producer.sensor.data.RingImuData
 import com.hcifuture.producer.sensor.data.RingTouchData
+import com.hcifuture.producer.sensor.external.MyBleManager
 import com.hcifuture.producer.sensor.external.ring.RingSpec
 
 import kotlinx.coroutines.CoroutineScope
@@ -19,30 +22,23 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.launchIn
-import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import no.nordicsemi.android.ble.data.Data
+import no.nordicsemi.android.ble.observer.ConnectionObserver
 import no.nordicsemi.android.common.core.DataByteArray
-import no.nordicsemi.android.kotlin.ble.client.main.callback.ClientBleGatt
-import no.nordicsemi.android.kotlin.ble.client.main.service.ClientBleGattCharacteristic
-import no.nordicsemi.android.kotlin.ble.client.main.service.ClientBleGattService
-import no.nordicsemi.android.kotlin.ble.core.data.BleWriteType
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.util.UUID
 
 @SuppressLint("MissingPermission")
 class RingV1(
     val context: Context,
     private val deviceName: String,
     private val address: String,
-) : NuixSensor() {
+) : NuixSensor(), ConnectionObserver {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var buffer = ByteArray(0)
-    private lateinit var sppReadCharacteristic: ClientBleGattCharacteristic
-    private lateinit var sppWriteCharacteristic: ClientBleGattCharacteristic
-    private lateinit var notifyReadCharacteristic: ClientBleGattCharacteristic
-    private lateinit var notifyWriteCharacteristic: ClientBleGattCharacteristic
-    private var connection: ClientBleGatt? = null
+    private var connection: MyBleManager? = null
     private var count = 0
     private val _imuFlow = MutableSharedFlow<RingImuData>()
     private val _touchFlow = MutableSharedFlow<RingTouchData>()
@@ -80,35 +76,44 @@ class RingV1(
 
         connectJob = scope.launch {
             try {
-                connection = ClientBleGatt.connect(context, address, scope)
+                val serviceMap = mutableMapOf<UUID, List<UUID>>(
+                    RingV1Spec.SPP_SERVICE_UUID to mutableListOf(
+                        RingV1Spec.SPP_READ_CHARACTERISTIC_UUID,
+                        RingV1Spec.SPP_WRITE_CHARACTERISTIC_UUID
+                    ),
+                    RingV1Spec.NOTIFY_SERVICE_UUID to mutableListOf(
+                        RingV1Spec.NOTIFY_READ_CHARACTERISTIC_UUID,
+                        RingV1Spec.NOTIFY_WRITE_CHARACTERISTIC_UUID
+                    )
+                )
+                connection = MyBleManager.connect(context, address, serviceMap) {
+                    it.connectionObserver = this@RingV1
+                }
                 if (!connection!!.isConnected) {
                     status = NuixSensorState.DISCONNECTED
                     return@launch
                 }
                 status = NuixSensorState.CONNECTED
-                val services = connection!!.discoverServices()
-                var sppService: ClientBleGattService = services.findService(RingV1Spec.SPP_SERVICE_UUID)!!
-                val notifyService = services.findService(RingV1Spec.NOTIFY_SERVICE_UUID)!!
-                sppReadCharacteristic = sppService.findCharacteristic(RingV1Spec.SPP_READ_CHARACTERISTIC_UUID)!!
-                sppWriteCharacteristic = sppService.findCharacteristic(RingV1Spec.SPP_WRITE_CHARACTERISTIC_UUID)!!
-                notifyReadCharacteristic = notifyService.findCharacteristic(RingV1Spec.NOTIFY_READ_CHARACTERISTIC_UUID)!!
-                notifyWriteCharacteristic = notifyService.findCharacteristic(RingV1Spec.NOTIFY_WRITE_CHARACTERISTIC_UUID)!!
 
-                val sppJob = sppReadCharacteristic.getNotifications().onEach {
-                    extractImu(it).map { data ->
-                        /**
-                         * TODO: use timestamps from the sensor?
-                         */
-                        count += 1
-                        _imuFlow.emit(RingImuData(data.first, data.second))
+                val sppJob = scope.launch {
+                    connection?.getNotificationFlow(RingV1Spec.SPP_SERVICE_UUID, RingV1Spec.SPP_READ_CHARACTERISTIC_UUID)?.collect {
+                        extractImu(it).map { data ->
+                            /**
+                             * TODO: use timestamps from the sensor?
+                             */
+                            count += 1
+                            _imuFlow.emit(RingImuData(data.first, data.second))
+                        }
                     }
-                }.launchIn(scope)
+                }
 
-                val notifyJob = notifyReadCharacteristic.getNotifications().onEach {
-                    handleNotification(it)?.let { data ->
-                        _touchFlow.emit(RingTouchData(RingV1Spec.code2TouchEvent(data), System.currentTimeMillis()))
+                val notifyJob = scope.launch {
+                    connection?.getNotificationFlow(RingV1Spec.NOTIFY_SERVICE_UUID, RingV1Spec.NOTIFY_READ_CHARACTERISTIC_UUID)?.collect {
+                        handleNotification(it)?.let { data ->
+                            _touchFlow.emit(RingTouchData(RingV1Spec.code2TouchEvent(data), System.currentTimeMillis()))
+                        }
                     }
-                }.launchIn(scope)
+                }
 
                 scope.launch {
                     while (true) {
@@ -123,9 +128,8 @@ class RingV1(
                 }
 
                 // Enable touch, TODO: refactor
-                notifyReadCharacteristic.write(
-                    DataByteArray.from(36.toByte(), 2, 224.toByte(), 5, 0),
-                    writeType = BleWriteType.NO_RESPONSE
+                writeNotify(
+                    Data(DataByteArray.from(36.toByte(), 2, 224.toByte(), 5, 0).value)
                 )
 
                 val commandList = arrayOf("ENSPP", "ENFAST", "TPOPS=1,1,1",
@@ -146,13 +150,14 @@ class RingV1(
         if (!disconnectable()) return
         countJob.cancel()
         connectJob.cancel()
+        connection?.connectionObserver = null
         connection?.disconnect()
         status = NuixSensorState.DISCONNECTED
     }
 
     private suspend fun writeSpp(data: String) {
         try {
-            sppWriteCharacteristic.write(DataByteArray.from(data + "\r\n"))
+            connection?.writeData(RingV1Spec.SPP_SERVICE_UUID, RingV1Spec.SPP_WRITE_CHARACTERISTIC_UUID, Data.from(data + "\r\n"))
         }
         catch (e: Exception) {
             Log.e("Nuix", "Error ${e.message}")
@@ -160,7 +165,17 @@ class RingV1(
         delay(200)
     }
 
-    private fun handleNotification(data: DataByteArray): Int? {
+    private suspend fun writeNotify(data: Data) {
+        try {
+            connection?.writeData(RingV1Spec.NOTIFY_SERVICE_UUID, RingV1Spec.NOTIFY_WRITE_CHARACTERISTIC_UUID, data, BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE)
+        }
+        catch (e: Exception) {
+            Log.e("Nuix", "Error ${e.message}")
+        }
+        delay(200)
+    }
+
+    private fun handleNotification(data: Data): Int? {
         // TODO: check crc
         data.getByte(0).let { type ->
             when (type) {
@@ -174,8 +189,8 @@ class RingV1(
         return null
     }
 
-    private fun extractImu(data: DataByteArray): List<Pair<List<Float>, Long>> {
-        buffer += data.value
+    private fun extractImu(data: Data): List<Pair<List<Float>, Long>> {
+        buffer += data.value ?: ByteArray(0)
         val imuList = mutableListOf<Pair<List<Float>, Long>>()
         for (i in 0 until buffer.size - 1) {
             if (buffer[i] == 0xAA.toByte() && buffer[i + 1] == 0x55.toByte()) {
@@ -194,5 +209,29 @@ class RingV1(
             buffer = buffer.copyOfRange(36, buffer.size)
         }
         return imuList
+    }
+
+    override fun onDeviceConnecting(device: BluetoothDevice) {
+        status = NuixSensorState.CONNECTING
+    }
+
+    override fun onDeviceConnected(device: BluetoothDevice) {
+        status = NuixSensorState.CONNECTED
+    }
+
+    override fun onDeviceFailedToConnect(device: BluetoothDevice, reason: Int) {
+        status = NuixSensorState.DISCONNECTED
+    }
+
+    override fun onDeviceReady(device: BluetoothDevice) {
+
+    }
+
+    override fun onDeviceDisconnecting(device: BluetoothDevice) {
+
+    }
+
+    override fun onDeviceDisconnected(device: BluetoothDevice, reason: Int) {
+        disconnect()
     }
 }
