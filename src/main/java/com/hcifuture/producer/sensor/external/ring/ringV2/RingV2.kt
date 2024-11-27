@@ -229,6 +229,27 @@ class RingV2(
                                 )
                             )
                         }
+                        cmd == 0x61.toByte() && subCmd == 0x02.toByte() -> {
+                            val event = if (it.value[4].toInt() == 0) {
+                                RingTouchEvent.TAP
+                            } else if (it.value[4].toInt() == 1) {
+                                RingTouchEvent.HOLD
+                            } else if (it.value[4].toInt() == 2) {
+                                RingTouchEvent.DOUBLE_TAP
+                            } else if (it.value[4].toInt() == 3) {
+                                RingTouchEvent.DOWN
+                            } else if (it.value[4].toInt() == 4) {
+                                RingTouchEvent.UP
+                            } else {
+                                RingTouchEvent.UNKNOWN
+                            }
+                            _touchEventFlow.emit(
+                                RingTouchData(
+                                    data = event,
+                                    timestamp = System.currentTimeMillis(),
+                                )
+                            )
+                        }
                         cmd == 0x71.toByte() && subCmd == 0x00.toByte() -> {
                             // microphone
                             val length = it.value[4].toInt().and(0xFF) or it.value[5].toInt().shl(8)
@@ -339,5 +360,13 @@ class RingV2(
 
     suspend fun closeMic() {
         write(RingV2Spec.CLOSE_MIC)
+    }
+
+    suspend fun openIMU() {
+        write(RingV2Spec.OPEN_6AXIS_IMU)
+    }
+
+    suspend fun closeIMU() {
+        write(RingV2Spec.CLOSE_6AXIS_IMU)
     }
 }

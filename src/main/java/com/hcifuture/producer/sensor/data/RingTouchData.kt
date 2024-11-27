@@ -22,6 +22,9 @@ enum class RingTouchEvent {
     FLICK_POSITIVE,
     FLICK_NEGATIVE,
     HOLD,
+    UP,
+    DOWN,
+    DOUBLE_TAP,
 }
 
 data class RingTouchData(

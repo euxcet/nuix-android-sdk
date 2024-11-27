@@ -77,7 +77,8 @@ class GestureDetector @Inject constructor(
                             }
                         }
                     } else if (labels[result] in arrayOf("wave_right", "wave_down", "wave_left", "wave_up",
-                            "pinch_down", "pinch_up", "push_forward", "index_flick")) {
+                            "pinch_down", "pinch_up", "push_forward", "index_flick",
+                            "slide_left", "slide_right")) {
                         eventFlow.emit(labels[result])
                     }
                 }
