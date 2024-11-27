@@ -58,6 +58,7 @@ class WordDetector @Inject constructor(
     var positionY = 0.0f
     var firstTimestamp = 0L
     var counter = 0
+    var started = false
 
     fun getTouchEvent(state: TouchState): TouchState? {
         val event: TouchState? =
@@ -86,6 +87,10 @@ class WordDetector @Inject constructor(
     }
 
     fun start() {
+        if (started) {
+            return
+        }
+        started = true
         val model = LiteModuleLoader.loadModuleFromAsset(assetManager, "touch_event.ptl")
         val moveModel = LiteModuleLoader.loadModuleFromAsset(assetManager, "move.ptl")
         var hx0 = IValue.from(Tensor.fromBlob(
@@ -225,19 +230,19 @@ class WordDetector @Inject constructor(
                         }
                     }
                 }
+                val inputTensor = Tensor.fromBlob(
+                    moveData.flatMap { it.toList() }.toFloatArray(),
+                    longArrayOf(1, 13, 6)
+                )
+                val outputTensor = moveModel.forward(
+                    IValue.from(inputTensor),
+                    IValue.tupleFrom(hx0, hx1),
+                ).toTuple()
+                val output = outputTensor[0].toTensor().dataAsFloatArray
+                val hx = outputTensor[1].toTuple()
+                hx0 = hx[0]
+                hx1 = hx[1]
                 if (touchState == TouchState.DOWN) {
-                    val inputTensor = Tensor.fromBlob(
-                        moveData.flatMap { it.toList() }.toFloatArray(),
-                        longArrayOf(1, 13, 6)
-                    )
-                    val outputTensor = moveModel.forward(
-                        IValue.from(inputTensor),
-                        IValue.tupleFrom(hx0, hx1),
-                    ).toTuple()
-                    val output = outputTensor[0].toTensor().dataAsFloatArray
-                    val hx = outputTensor[1].toTuple()
-                    hx0 = hx[0]
-                    hx1 = hx[1]
                     val gyrX = moveData[12][3]
                     val gyrY = moveData[12][4]
                     val gyrZ = moveData[12][5]
