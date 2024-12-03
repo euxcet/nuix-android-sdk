@@ -156,7 +156,7 @@ class RingV2(
                         }
                         cmd == 0x40.toByte() && subCmd == 0x06.toByte() -> {
                             // imu
-                            val data = it.value.slice(5 until it.value.size)
+                            val data = it.value.slice((4 + it.value.size % 2) until it.value.size)
                                 .chunked(2)
                                 .map { (l, h) -> (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat() }
                             var tot = 0
@@ -311,7 +311,6 @@ class RingV2(
         Log.e("Nuix", "Manual disconnect")
         connection?.disconnect()
         readJob?.cancel()
-//        commandJob?.cancel()
         countJob.cancel()
         connectJob.cancel()
         status = NuixSensorState.DISCONNECTED
