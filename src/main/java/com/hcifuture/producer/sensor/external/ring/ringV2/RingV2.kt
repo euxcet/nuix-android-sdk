@@ -327,13 +327,9 @@ class RingV2(
     }
 
     suspend fun openGreenPPG(
-        time: Int = 30,
-        freq: Int = 2, // [0: 25hz, 1: 50hz, 2: 100hz]
-        waveform: Boolean = true,
-        progress: Boolean = true,
-        rr: Boolean = true
+        freq: Int = 0, // [0: 25hz, 1: 100hz]
     ) {
-        write(RingV2Spec.openGreenPPG(time, freq, waveform, progress, rr))
+        write(RingV2Spec.openGreenPPG(freq))
     }
 
     suspend fun closeGreenPPG() {
@@ -341,12 +337,9 @@ class RingV2(
     }
 
     suspend fun openRedPPG(
-        time: Int = 30,
-        freq: Int = 2, // [0: 25hz, 1: 50hz, 2: 100hz]
-        waveform: Boolean = true,
-        progress: Boolean = true,
+        freq: Int = 0, // [0: 25hz, 1: 100hz]
     ) {
-        write(RingV2Spec.openRedPPG(time, freq, waveform, progress))
+        write(RingV2Spec.openRedPPG(freq))
     }
 
     suspend fun closeRedPPG() {

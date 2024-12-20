@@ -5,13 +5,13 @@ import java.nio.ByteBuffer
 
 /*
 type:
-    0 ppg green result
+    0 ppg green hr
     1 ppg green waveform
-    2 ppg green rr
-    3 ppg green progress
-    4 ppg red result
+    2 ppg green EMPTY
+    3 ppg green EMPTY
+    4 ppg red spo2
     5 ppg red waveform
-    6 ppg red progress
+    6 ppg red EMPTY
  */
 class RingV2PPGData(
     val type: Int,

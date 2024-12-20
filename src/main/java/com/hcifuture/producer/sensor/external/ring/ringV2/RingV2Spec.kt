@@ -24,41 +24,27 @@ class RingV2Spec {
         val OPEN_6AXIS_IMU       = byteArrayOf(0x00, 0x00, 0x40, 0x06)
         val CLOSE_6AXIS_IMU      = byteArrayOf(0x00, 0x00, 0x40, 0x00)
         val GET_TOUCH            = byteArrayOf(0x00, 0x00, 0x61, 0x00)
-        val OPEN_MIC             = byteArrayOf(0x00, 0x00, 0x71, 0x00, 0x01)
-        val CLOSE_MIC            = byteArrayOf(0x00, 0x00, 0x71, 0x00, 0x00)
+        val OPEN_MIC             = byteArrayOf(0x00, 0x00, 0x71, 0x01)
+        val CLOSE_MIC            = byteArrayOf(0x00, 0x00, 0x71, 0x00)
         val GET_NFC              = byteArrayOf(0x00, 0x00, 0x82.toByte(), 0x00)
         val CLOSE_GREEN_PPG      = byteArrayOf(0x00, 0x00, 0x31, 0x02)
         val CLOSE_RED_PPG        = byteArrayOf(0x00, 0x00, 0x32, 0x02)
 
         fun openGreenPPG(
-            time: Int = 30,
-            freq: Int = 2, // [0: 25hz, 1: 50hz, 2: 100hz]
-            waveform: Boolean = true,
-            progress: Boolean = true,
-            rr: Boolean = true
+            freq: Int = 0, // [0: 25hz, 1: 100hz]
         ) : ByteArray {
             return byteArrayOf(
                 0x00, 0x00, 0x31, 0x00,
-                time.toByte(),
                 freq.toByte(),
-                if (waveform) 0x01 else 0x00,
-                if (progress) 0x01 else 0x00,
-                if (rr) 0x01 else 0x00,
             )
         }
 
         fun openRedPPG(
-            time: Int = 30,
-            freq: Int = 2, // [0: 25hz, 1: 50hz, 2: 100hz]
-            waveform: Boolean = true,
-            progress: Boolean = true,
+            freq: Int = 0, // [0: 25hz, 1: 100hz]
         ) : ByteArray {
             return byteArrayOf(
                 0x00, 0x00, 0x32, 0x00,
-                time.toByte(),
                 freq.toByte(),
-                if (waveform) 0x01 else 0x00,
-                if (progress) 0x01 else 0x00,
             )
         }
     }
