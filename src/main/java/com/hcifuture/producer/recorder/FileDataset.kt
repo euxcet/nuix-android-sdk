@@ -113,7 +113,7 @@ class FileDataset(
         val formatter = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm_ss")
         val timestamp = LocalDateTime.now().format(formatter)
         val files = collectors.map {
-            File(dir, "${userId}_${taskId}_${it.suffixName}_${timestamp}")
+            File(dir, "${userId}_${taskId}_${timestamp}_${it.suffixName}")
         }
         assert(files.all { !it.exists() })
         return files
