@@ -16,6 +16,7 @@ class RingV2Spec {
         val READ_CHARACTERISTIC_UUID: UUID = UUID.fromString("BAE80011-4F05-4503-8E65-3AF1F7329D1F")
         val WRITE_CHARACTERISTIC_UUID: UUID = UUID.fromString("BAE80010-4F05-4503-8E65-3AF1F7329D1F")
 
+        val GET_CONTROL          = byteArrayOf(0x00, 0x00, 0x00, 0x00)
         val GET_TIME             = byteArrayOf(0x00, 0x00, 0x10, 0x01)
         val GET_SOFTWARE_VERSION = byteArrayOf(0x00, 0x00, 0x11, 0x00)
         val GET_HARDWARE_VERSION = byteArrayOf(0x00, 0x00, 0x11, 0x01)

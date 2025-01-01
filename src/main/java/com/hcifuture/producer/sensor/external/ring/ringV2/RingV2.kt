@@ -27,11 +27,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
-import no.nordicsemi.android.common.core.DataByteArray
 import no.nordicsemi.android.kotlin.ble.client.main.callback.ClientBleGatt
 import no.nordicsemi.android.kotlin.ble.client.main.service.ClientBleGattCharacteristic
 import no.nordicsemi.android.kotlin.ble.core.data.BleWriteType
 import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
+import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import java.util.Arrays
 import kotlin.experimental.and
 
@@ -102,11 +102,12 @@ class RingV2(
             try {
                 Log.e("Nuix", "RingV2[${address}] connecting")
                 connection = ClientBleGatt.connect(context, address, scope)
-                connection?.requestMtu(247)
                 if (!connection!!.isConnected) {
                     status = NuixSensorState.DISCONNECTED
                     return@launch
                 }
+
+//                connection?.requestMtu(517)
 
                 connection!!.connectionState.onEach {
                     if (it == GattConnectionState.STATE_DISCONNECTED) {
@@ -121,6 +122,7 @@ class RingV2(
                 readJob = readCharacteristic.getNotifications().onEach {
                     val cmd = it.value[2]
                     val subCmd = it.value[3]
+                    Log.e("Nuix", "data")
                     when {
                         cmd == 0x11.toByte() && subCmd == 0x0.toByte() -> {
                             // software version
@@ -283,6 +285,7 @@ class RingV2(
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
 //                commandJob = scope.launch {
+                    write(RingV2Spec.GET_CONTROL)
                     write(RingV2Spec.GET_BATTERY_LEVEL)
                     write(RingV2Spec.GET_HARDWARE_VERSION)
                     write(RingV2Spec.GET_SOFTWARE_VERSION)

@@ -2,7 +2,6 @@ package com.hcifuture.producer.detector
 
 import android.content.res.AssetManager
 import android.util.Log
-import androidx.collection.FloatList
 import com.hcifuture.producer.common.network.bean.CharacterResult
 import com.hcifuture.producer.common.network.http.HttpService
 import com.hcifuture.producer.detector.utils.MadgwickFilter
