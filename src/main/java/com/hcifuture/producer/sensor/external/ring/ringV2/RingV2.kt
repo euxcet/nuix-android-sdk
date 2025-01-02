@@ -107,7 +107,7 @@ class RingV2(
                     return@launch
                 }
 
-//                connection?.requestMtu(517)
+                connection?.requestMtu(517)
 
                 connection!!.connectionState.onEach {
                     if (it == GattConnectionState.STATE_DISCONNECTED) {
@@ -122,7 +122,6 @@ class RingV2(
                 readJob = readCharacteristic.getNotifications().onEach {
                     val cmd = it.value[2]
                     val subCmd = it.value[3]
-                    Log.e("Nuix", "data")
                     when {
                         cmd == 0x11.toByte() && subCmd == 0x0.toByte() -> {
                             // software version
