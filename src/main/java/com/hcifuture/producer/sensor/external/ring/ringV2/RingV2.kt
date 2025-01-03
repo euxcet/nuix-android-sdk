@@ -29,8 +29,10 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.kotlin.ble.client.main.callback.ClientBleGatt
 import no.nordicsemi.android.kotlin.ble.client.main.service.ClientBleGattCharacteristic
+import no.nordicsemi.android.kotlin.ble.core.data.BleGattPhy
 import no.nordicsemi.android.kotlin.ble.core.data.BleWriteType
 import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
+import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import java.util.Arrays
 import kotlin.experimental.and
@@ -107,7 +109,14 @@ class RingV2(
                     return@launch
                 }
 
-                connection?.requestMtu(517)
+//                connection!!.setPhy(
+//                    BleGattPhy.PHY_LE_CODED,
+//                    BleGattPhy.PHY_LE_CODED,
+//                    PhyOption.NO_PREFERRED,
+//                )
+
+//                val mtu = connection?.requestMtu(247)
+//                Log.e("Nuix", "mtu is " + mtu)
 
                 connection!!.connectionState.onEach {
                     if (it == GattConnectionState.STATE_DISCONNECTED) {
@@ -156,44 +165,57 @@ class RingV2(
                                 ))
                         }
                         cmd == 0x40.toByte() && subCmd == 0x06.toByte() -> {
-                            // imu
-                            val data = it.value.slice((4 + it.value.size % 2) until it.value.size)
-                                .chunked(2)
-                                .map { (l, h) -> (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat() }
-                            var tot = 0
-                            for (i in data.indices step 6) {
-                                val imu = data.slice(i until i + 6).toMutableList()
-                                imu[0] *= 9.8f / 1000.0f
-                                imu[1] *= 9.8f / 1000.0f
-                                imu[2] *= 9.8f / 1000.0f
-                                imu[3] *= 3.14f / 180.0f
-                                imu[4] *= 3.14f / 180.0f
-                                imu[5] *= 3.14f / 180.0f
-                                imu[0] = imu[1].also { imu[1] = imu[0] }
-                                imu[1] = imu[2].also { imu[2] = imu[1] }
-                                imu[3] = imu[4].also { imu[4] = imu[3] }
-                                imu[4] = imu[5].also { imu[5] = imu[4] }
-                                imu[0] = -imu[0]
-                                imu[2] = -imu[2]
-                                imu[3] = -imu[3]
-                                imu[5] = -imu[5]
-                                tot += 1
-                                if (tot == 5) {
-                                    imu[5] = lastGyro[2]
+                            Log.e("Nuix", " " + it.value.size)
+                            if (it.value.size == 20) {
+                                scope.launch {
+                                    try {
+                                        connection?.requestMtu(247)
+                                    } catch (_: Exception) {
+                                    }
                                 }
-                                lastGyro[0] = imu[3]
-                                lastGyro[1] = imu[4]
-                                lastGyro[2] = imu[5]
-                                imu[3] -= zeroGyro[0]
-                                imu[4] -= zeroGyro[1]
-                                imu[5] -= zeroGyro[2]
-                                count += 1
-                                _imuFlow.emit(
-                                    RingImuData(
-                                        data = imu,
-                                        timestamp = 0,
+                            } else {
+                                // imu
+                                val data =
+                                    it.value.slice((4 + it.value.size % 2) until it.value.size)
+                                        .chunked(2)
+                                        .map { (l, h) ->
+                                            (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat()
+                                        }
+                                var tot = 0
+                                for (i in data.indices step 6) {
+                                    val imu = data.slice(i until i + 6).toMutableList()
+                                    imu[0] *= 9.8f / 1000.0f
+                                    imu[1] *= 9.8f / 1000.0f
+                                    imu[2] *= 9.8f / 1000.0f
+                                    imu[3] *= 3.14f / 180.0f
+                                    imu[4] *= 3.14f / 180.0f
+                                    imu[5] *= 3.14f / 180.0f
+                                    imu[0] = imu[1].also { imu[1] = imu[0] }
+                                    imu[1] = imu[2].also { imu[2] = imu[1] }
+                                    imu[3] = imu[4].also { imu[4] = imu[3] }
+                                    imu[4] = imu[5].also { imu[5] = imu[4] }
+                                    imu[0] = -imu[0]
+                                    imu[2] = -imu[2]
+                                    imu[3] = -imu[3]
+                                    imu[5] = -imu[5]
+                                    tot += 1
+                                    if (tot == 5) {
+                                        imu[5] = lastGyro[2]
+                                    }
+                                    lastGyro[0] = imu[3]
+                                    lastGyro[1] = imu[4]
+                                    lastGyro[2] = imu[5]
+                                    imu[3] -= zeroGyro[0]
+                                    imu[4] -= zeroGyro[1]
+                                    imu[5] -= zeroGyro[2]
+                                    count += 1
+                                    _imuFlow.emit(
+                                        RingImuData(
+                                            data = imu,
+                                            timestamp = 0,
+                                        )
                                     )
-                                )
+                                }
                             }
                         }
                         cmd == 0x61.toByte() && subCmd == 0x00.toByte() -> {
