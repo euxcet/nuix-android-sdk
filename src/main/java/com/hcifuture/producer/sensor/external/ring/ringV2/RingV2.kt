@@ -165,7 +165,6 @@ class RingV2(
                                 ))
                         }
                         cmd == 0x40.toByte() && subCmd == 0x06.toByte() -> {
-                            Log.e("Nuix", " " + it.value.size)
                             if (it.value.size == 20) {
                                 scope.launch {
                                     try {
