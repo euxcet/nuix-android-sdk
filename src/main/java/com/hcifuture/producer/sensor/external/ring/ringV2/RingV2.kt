@@ -73,10 +73,8 @@ class RingV2(
                 BytesDataCollector(listOf(this), listOf(_ppgFlow.asSharedFlow()), "ringV2[${address}]PPG.bin"),
     )
     private var count = 0
-    private lateinit var countJob: Job
     private lateinit var connectJob: Job
     private var readJob: Job? = null
-//    private var commandJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
 
@@ -89,17 +87,6 @@ class RingV2(
     override fun connect() {
         if (!connectable()) return
         status = NuixSensorState.CONNECTING
-        countJob = scope.launch {
-//            while (true) {
-//                delay(5000)
-//                if (count == 0) {
-//                    disconnect()
-//                } else {
-//                    Log.e("Nuix", "Ring fps: ${count / 5}")
-//                    count = 0
-//                }
-//            }
-        }
         connectJob = scope.launch {
             try {
                 Log.e("Nuix", "RingV2[${address}] connecting")
@@ -108,15 +95,6 @@ class RingV2(
                     status = NuixSensorState.DISCONNECTED
                     return@launch
                 }
-
-//                connection!!.setPhy(
-//                    BleGattPhy.PHY_LE_CODED,
-//                    BleGattPhy.PHY_LE_CODED,
-//                    PhyOption.NO_PREFERRED,
-//                )
-
-//                val mtu = connection?.requestMtu(247)
-//                Log.e("Nuix", "mtu is " + mtu)
 
                 connection!!.connectionState.onEach {
                     if (it == GattConnectionState.STATE_DISCONNECTED) {
@@ -174,21 +152,23 @@ class RingV2(
                                 }
                             } else {
                                 // imu
+                                val acc_scale = 2048 * (1 shl ((it.value[4] / 4) and 3))
+                                val gyr_scale = 16.3f * (1 shl ((it.value[4] and 3).toInt()))
                                 val data =
-                                    it.value.slice((4 + it.value.size % 2) until it.value.size)
+                                    it.value.slice(5 until 125)
                                         .chunked(2)
                                         .map { (l, h) ->
                                             (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat()
                                         }
-                                var tot = 0
                                 for (i in data.indices step 6) {
                                     val imu = data.slice(i until i + 6).toMutableList()
-                                    imu[0] *= 9.8f / 1000.0f
-                                    imu[1] *= 9.8f / 1000.0f
-                                    imu[2] *= 9.8f / 1000.0f
-                                    imu[3] *= 3.14f / 180.0f
-                                    imu[4] *= 3.14f / 180.0f
-                                    imu[5] *= 3.14f / 180.0f
+//                                    0 1 2 -> 1 2 0
+                                    imu[0] *= 9.8f / acc_scale
+                                    imu[1] *= 9.8f / acc_scale
+                                    imu[2] *= 9.8f / acc_scale
+                                    imu[3] *= 3.14f / 180.0f / gyr_scale
+                                    imu[4] *= 3.14f / 180.0f / gyr_scale
+                                    imu[5] *= 3.14f / 180.0f / gyr_scale
                                     imu[0] = imu[1].also { imu[1] = imu[0] }
                                     imu[1] = imu[2].also { imu[2] = imu[1] }
                                     imu[3] = imu[4].also { imu[4] = imu[3] }
@@ -197,16 +177,6 @@ class RingV2(
                                     imu[2] = -imu[2]
                                     imu[3] = -imu[3]
                                     imu[5] = -imu[5]
-                                    tot += 1
-                                    if (tot == 5) {
-                                        imu[5] = lastGyro[2]
-                                    }
-                                    lastGyro[0] = imu[3]
-                                    lastGyro[1] = imu[4]
-                                    lastGyro[2] = imu[5]
-                                    imu[3] -= zeroGyro[0]
-                                    imu[4] -= zeroGyro[1]
-                                    imu[5] -= zeroGyro[2]
                                     count += 1
                                     _imuFlow.emit(
                                         RingImuData(
@@ -334,7 +304,6 @@ class RingV2(
         Log.e("Nuix", "Manual disconnect")
         connection?.disconnect()
         readJob?.cancel()
-        countJob.cancel()
         connectJob.cancel()
         status = NuixSensorState.DISCONNECTED
     }
