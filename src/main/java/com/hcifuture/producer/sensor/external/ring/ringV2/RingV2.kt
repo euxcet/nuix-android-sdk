@@ -242,7 +242,7 @@ class RingV2(
                                 )
                             )
                         }
-                        cmd == 0x71.toByte() && subCmd == 0x00.toByte() -> {
+                        cmd == 0x71.toByte() -> {
                             // microphone
 //                            val length = it.value[4].toInt().and(0xFF) or it.value[5].toInt().shl(8)
 //                            val sequenceId = it.value[6].toInt().and(0xFF) or it.value[7].toInt().and(0xFF).shl(8) or
