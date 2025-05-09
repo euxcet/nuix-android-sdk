@@ -244,16 +244,18 @@ class RingV2(
                         }
                         cmd == 0x71.toByte() && subCmd == 0x00.toByte() -> {
                             // microphone
-                            val length = it.value[4].toInt().and(0xFF) or it.value[5].toInt().shl(8)
-                            val sequenceId = it.value[6].toInt().and(0xFF) or it.value[7].toInt().and(0xFF).shl(8) or
-                                             it.value[8].toInt().and(0xFF).shl(16) or it.value[9].toInt().shl(24)
-                            _audioFlow.emit(
-                                RingV2AudioData(
-                                    length = length,
-                                    sequenceId = sequenceId,
-                                    data = it.value.slice(10 until it.value.size),
+//                            val length = it.value[4].toInt().and(0xFF) or it.value[5].toInt().shl(8)
+//                            val sequenceId = it.value[6].toInt().and(0xFF) or it.value[7].toInt().and(0xFF).shl(8) or
+//                                             it.value[8].toInt().and(0xFF).shl(16) or it.value[9].toInt().shl(24)
+                            if (it.value.size > 200) {
+                                _audioFlow.emit(
+                                    RingV2AudioData(
+                                        length = 200,
+                                        sequenceId = 0,
+                                        data = it.value.slice(it.value.size - 200 until it.value.size),
+                                    )
                                 )
-                            )
+                            }
                         }
                         cmd == 0x31.toByte() -> {
                             _ppgFlow.emit(
