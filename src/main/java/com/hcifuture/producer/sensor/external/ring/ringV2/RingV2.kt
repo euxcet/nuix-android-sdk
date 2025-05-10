@@ -153,7 +153,8 @@ class RingV2(
                             } else {
                                 // imu
                                 val acc_scale = 2048 * (1 shl ((it.value[4] / 4) and 3))
-                                val gyr_scale = 16.3f * (1 shl ((it.value[4] and 3).toInt()))
+                                val gyr_scale = 16.4f * (1 shl ((it.value[4] and 3).toInt()))
+//                                Log.e("Nuix", " " + acc_scale + " " + gyr_scale)
                                 val data =
                                     it.value.slice(5 until 125)
                                         .chunked(2)
