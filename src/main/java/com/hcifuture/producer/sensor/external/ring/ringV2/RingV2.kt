@@ -40,8 +40,8 @@ import kotlin.experimental.and
 @SuppressLint("MissingPermission")
 class RingV2(
     val context: Context,
-    private val deviceName: String,
-    private val address: String,
+    val deviceName: String,
+    val address: String,
 ) : NuixSensor() {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var buffer = ByteArray(0)
@@ -115,7 +115,7 @@ class RingV2(
                             _statusFlow.emit(
                                 RingV2StatusData(
                                 type = RingV2StatusType.SOFTWARE_VERSION,
-                                softwareVersion = it.value.slice(4 until it.value.size).toString(),
+                                softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
                             ))
                         }
                         cmd == 0x11.toByte() && subCmd == 0x1.toByte() -> {
@@ -123,7 +123,7 @@ class RingV2(
                             _statusFlow.emit(
                                 RingV2StatusData(
                                     type = RingV2StatusType.HARDWARE_VERSION,
-                                    softwareVersion = it.value.slice(4 until it.value.size).toString(),
+                                    softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
                                 ))
                         }
                         cmd == 0x12.toByte() && subCmd == 0x0.toByte() -> {

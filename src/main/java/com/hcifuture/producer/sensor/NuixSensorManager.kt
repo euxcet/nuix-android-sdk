@@ -140,7 +140,7 @@ class NuixSensorManager @Inject constructor(
     fun defaultVideo(): VideoSensor? = videos().firstOrNull()
     fun defaultAudio(): AudioSensor? = audios().firstOrNull()
 
-    private fun addSensor(provider: NuixSensorProvider, sensor: NuixSensor) {
+    fun addSensor(provider: NuixSensorProvider, sensor: NuixSensor) {
         _sensors[provider] ?:
             throw NoSuchElementException("Attempt to add a sensor from an unknown provider.")
         if (_sensors[provider]?.find { it.name == sensor.name } == null) {

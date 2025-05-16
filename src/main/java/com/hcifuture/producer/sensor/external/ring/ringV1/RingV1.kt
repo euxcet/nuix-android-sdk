@@ -33,8 +33,8 @@ import java.nio.ByteOrder
 @SuppressLint("MissingPermission")
 class RingV1(
     val context: Context,
-    private val deviceName: String,
-    private val address: String,
+    val deviceName: String,
+    val address: String,
 ) : NuixSensor() {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var buffer = ByteArray(0)
