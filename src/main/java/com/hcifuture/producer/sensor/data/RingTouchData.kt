@@ -24,6 +24,7 @@ enum class RingTouchEvent {
     HOLD,
     UP,
     DOWN,
+    LEAVE,
     DOUBLE_TAP,
 }
 

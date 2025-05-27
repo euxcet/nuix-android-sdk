@@ -233,6 +233,8 @@ class RingV2(
                                 RingTouchEvent.DOWN
                             } else if (it.value[4].toInt() == 4) {
                                 RingTouchEvent.UP
+                            } else if (it.value[4].toInt() == 5) {
+                                RingTouchEvent.LEAVE
                             } else {
                                 RingTouchEvent.UNKNOWN
                             }
