@@ -20,6 +20,7 @@ import com.hcifuture.producer.sensor.external.ring.RingSpec
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -77,6 +78,7 @@ class RingV2(
     private var readJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
+    private val commandChannel: Channel<ByteArray> = Channel()
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -233,6 +235,8 @@ class RingV2(
                                 RingTouchEvent.DOWN
                             } else if (it.value[4].toInt() == 4) {
                                 RingTouchEvent.UP
+                            } else if (it.value[4].toInt() == 5) {
+                                RingTouchEvent.LEAVE
                             } else {
                                 RingTouchEvent.UNKNOWN
                             }
@@ -277,15 +281,14 @@ class RingV2(
                     }
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
-//                commandJob = scope.launch {
-                    write(RingV2Spec.GET_CONTROL)
-                    write(RingV2Spec.GET_BATTERY_LEVEL)
-                    write(RingV2Spec.GET_HARDWARE_VERSION)
-                    write(RingV2Spec.GET_SOFTWARE_VERSION)
-                    write(RingV2Spec.OPEN_6AXIS_IMU)
-                    status = NuixSensorState.CONNECTED
-                    Log.e("Nuix", "RingV2[${address}] connected")
-//                }
+                write(RingV2Spec.GET_CONTROL)
+                write(RingV2Spec.GET_BATTERY_LEVEL)
+                write(RingV2Spec.GET_HARDWARE_VERSION)
+                write(RingV2Spec.GET_SOFTWARE_VERSION)
+                write(RingV2Spec.CLOSE_MIC)
+                write(RingV2Spec.OPEN_6AXIS_IMU)
+                status = NuixSensorState.CONNECTED
+                Log.e("Nuix", "RingV2[${address}] connected")
             }
             catch (e: Exception) {
                 Log.e("Nuix", "Error $e")
@@ -298,6 +301,14 @@ class RingV2(
             if (status != NuixSensorState.CONNECTED) {
                 Log.e("Nuix", "Error: Timeout")
                 disconnect()
+            }
+        }
+        scope.launch {
+            while (true) {
+                val command = commandChannel.receive()
+                Log.e("Nuix", command.joinToString(" "))
+                write(command)
+                delay(100)
             }
         }
     }
@@ -324,36 +335,40 @@ class RingV2(
     suspend fun openGreenPPG(
         freq: Int = 0, // [0: 25hz, 1: 100hz]
     ) {
-        write(RingV2Spec.openGreenPPG(freq))
+        commandChannel.send(RingV2Spec.openGreenPPG(freq))
     }
 
     suspend fun closeGreenPPG() {
-        write(RingV2Spec.CLOSE_GREEN_PPG)
+        commandChannel.send(RingV2Spec.CLOSE_GREEN_PPG)
     }
 
     suspend fun openRedPPG(
         freq: Int = 0, // [0: 25hz, 1: 100hz]
     ) {
-        write(RingV2Spec.openRedPPG(freq))
+        commandChannel.send(RingV2Spec.openRedPPG(freq))
     }
 
     suspend fun closeRedPPG() {
-        write(RingV2Spec.CLOSE_RED_PPG)
+        commandChannel.send(RingV2Spec.CLOSE_RED_PPG)
     }
 
     suspend fun openMic() {
-        write(RingV2Spec.OPEN_MIC)
+        commandChannel.send(RingV2Spec.OPEN_MIC)
     }
 
     suspend fun closeMic() {
-        write(RingV2Spec.CLOSE_MIC)
+        commandChannel.send(RingV2Spec.CLOSE_MIC)
     }
 
     suspend fun openIMU() {
-        write(RingV2Spec.OPEN_6AXIS_IMU)
+        commandChannel.send(RingV2Spec.OPEN_6AXIS_IMU)
     }
 
     suspend fun closeIMU() {
-        write(RingV2Spec.CLOSE_6AXIS_IMU)
+        commandChannel.send(RingV2Spec.CLOSE_6AXIS_IMU)
+    }
+
+    suspend fun hidScreenshot() {
+        commandChannel.send(RingV2Spec.HID_SCREENSHOT)
     }
 }

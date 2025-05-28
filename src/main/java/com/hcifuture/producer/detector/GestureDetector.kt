@@ -30,7 +30,7 @@ class GestureDetector @Inject constructor(
         "pinch_down", "pinch_up", "boom", "tap_up", "throw", "touch_left", "touch_right",
         "slide_up", "slide_down", "slide_left", "slide_right", "aid_slide_left", "aid_slide_right",
         "touch_up", "touch_down", "touch_ring", "long_touch_ring", "spread_ring")
-    private val calculateFrequency: Float = 300.0f
+    private val calculateFrequency: Float = 30.0f
 
     private val data = Array(6) { FloatArray(200) { 0.0f } }
     private var pinchDown = false
@@ -78,6 +78,7 @@ class GestureDetector @Inject constructor(
                         }
                     } else if (labels[result] in arrayOf("wave_right", "wave_down", "wave_left", "wave_up",
                             "pinch_down", "pinch_up", "push_forward", "index_flick",
+                            "push_forward", "index_flick",
                             "slide_left", "slide_right")) {
                         eventFlow.emit(labels[result])
                     }
