@@ -26,6 +26,7 @@ enum class RingTouchEvent {
     DOWN,
     LEAVE,
     DOUBLE_TAP,
+    LEAVE,
 }
 
 data class RingTouchData(
