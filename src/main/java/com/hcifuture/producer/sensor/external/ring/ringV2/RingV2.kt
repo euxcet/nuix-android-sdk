@@ -335,7 +335,7 @@ class RingV2(
         }
     }
 
-    suspend fun write(data: ByteArray) {
+    private suspend fun write(data: ByteArray) {
         try {
             writeCharacteristic.write(DataByteArray(data), writeType = BleWriteType.NO_RESPONSE)
         }
@@ -343,6 +343,10 @@ class RingV2(
             Log.e("Nuix", "Error $e")
         }
         delay(50)
+    }
+
+    suspend fun writeCommand(command: ByteArray) {
+        commandChannel.send(command)
     }
 
     suspend fun openGreenPPG(
@@ -383,5 +387,9 @@ class RingV2(
 
     suspend fun hidScreenshot() {
         commandChannel.send(RingV2Spec.HID_SCREENSHOT)
+    }
+
+    suspend fun getControl() {
+        writeCommand(RingV2Spec.GET_CONTROL)
     }
 }
