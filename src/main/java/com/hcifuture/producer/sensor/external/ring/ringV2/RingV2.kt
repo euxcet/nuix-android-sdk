@@ -79,6 +79,8 @@ class RingV2(
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val commandChannel: Channel<ByteArray> = Channel()
+    private var commandJob: Job? = null
+    private  var connectTimeoutJob:  Job? = null
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -95,6 +97,9 @@ class RingV2(
                 connection = ClientBleGatt.connect(context, address, scope)
                 if (!connection!!.isConnected) {
                     status = NuixSensorState.DISCONNECTED
+                    if (connectTimeoutJob?.isActive == true) {
+                        connectTimeoutJob?.cancel()
+                    }
                     return@launch
                 }
 
@@ -282,9 +287,9 @@ class RingV2(
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
                 write(RingV2Spec.GET_CONTROL)
-                write(RingV2Spec.GET_BATTERY_LEVEL)
-                write(RingV2Spec.GET_HARDWARE_VERSION)
-                write(RingV2Spec.GET_SOFTWARE_VERSION)
+//                write(RingV2Spec.GET_BATTERY_LEVEL)
+//                write(RingV2Spec.GET_HARDWARE_VERSION)
+//                write(RingV2Spec.GET_SOFTWARE_VERSION)
                 write(RingV2Spec.CLOSE_MIC)
                 write(RingV2Spec.OPEN_6AXIS_IMU)
                 status = NuixSensorState.CONNECTED
@@ -296,18 +301,22 @@ class RingV2(
                 return@launch
             }
         }
-        scope.launch {
-            delay(4000)
+        if (connectTimeoutJob?.isActive == true) {
+            connectTimeoutJob?.cancel()
+        }
+        connectTimeoutJob = scope.launch {
+            delay(10000)
             if (status != NuixSensorState.CONNECTED) {
                 Log.e("Nuix", "Error: Timeout")
                 disconnect()
             }
         }
-        scope.launch {
+        commandJob = scope.launch {
             while (true) {
                 val command = commandChannel.receive()
                 Log.e("Nuix", command.joinToString(" "))
                 write(command)
+                Log.e("Nuix", "write command end")
                 delay(100)
             }
         }
@@ -319,7 +328,11 @@ class RingV2(
         connection?.disconnect()
         readJob?.cancel()
         connectJob.cancel()
+        commandJob?.cancel()
         status = NuixSensorState.DISCONNECTED
+        if (connectTimeoutJob?.isActive == true) {
+            connectTimeoutJob?.cancel()
+        }
     }
 
     suspend fun write(data: ByteArray) {
