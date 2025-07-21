@@ -17,6 +17,7 @@ import com.hcifuture.producer.sensor.data.RingV2StatusData
 import com.hcifuture.producer.sensor.data.RingV2StatusType
 import com.hcifuture.producer.sensor.data.RingV2TouchRawData
 import com.hcifuture.producer.sensor.external.ring.RingSpec
+import com.hcifuture.producer.utils.LogUtils
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,7 +79,11 @@ class RingV2(
     private var readJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
-    private val commandChannel: Channel<ByteArray> = Channel()
+    private val commandChannel: Channel<ByteArray> = Channel(
+        onUndeliveredElement = { value ->
+            Log.e("Nuix", "RingV2[${address}] command channel undelivered element: ${value.joinToString(" ")}")
+        },
+    )
     private var commandJob: Job? = null
     private  var connectTimeoutJob:  Job? = null
 
@@ -93,7 +98,7 @@ class RingV2(
         status = NuixSensorState.CONNECTING
         connectJob = scope.launch {
             try {
-                Log.e("Nuix", "RingV2[${address}] connecting")
+                LogUtils.d("Nuix", "RingV2[${address}] connecting")
                 connection = ClientBleGatt.connect(context, address, scope)
                 if (!connection!!.isConnected) {
                     status = NuixSensorState.DISCONNECTED
@@ -112,7 +117,7 @@ class RingV2(
                 val service = connection!!.discoverServices().findService(RingV2Spec.SERVICE_UUID)!!
                 readCharacteristic = service.findCharacteristic(RingV2Spec.READ_CHARACTERISTIC_UUID)!!
                 writeCharacteristic = service.findCharacteristic(RingV2Spec.WRITE_CHARACTERISTIC_UUID)!!
-                Log.e("Nuix", "RingV2[${address}] get characteristic")
+                LogUtils.d("Nuix", "RingV2[${address}] get characteristic")
                 readJob = readCharacteristic.getNotifications().onEach {
                     val cmd = it.value[2]
                     val subCmd = it.value[3]
@@ -285,18 +290,18 @@ class RingV2(
                         }
                     }
                 }.launchIn(scope)
-                Log.e("Nuix", "RingV2[${address}] send commands")
+                LogUtils.d("Nuix", "RingV2[${address}] send commands")
                 write(RingV2Spec.GET_CONTROL)
 //                write(RingV2Spec.GET_BATTERY_LEVEL)
 //                write(RingV2Spec.GET_HARDWARE_VERSION)
 //                write(RingV2Spec.GET_SOFTWARE_VERSION)
                 write(RingV2Spec.CLOSE_MIC)
-                write(RingV2Spec.OPEN_6AXIS_IMU)
+                // write(RingV2Spec.OPEN_6AXIS_IMU)s
                 status = NuixSensorState.CONNECTED
-                Log.e("Nuix", "RingV2[${address}] connected")
+                LogUtils.d("Nuix", "RingV2[${address}] connected")
             }
             catch (e: Exception) {
-                Log.e("Nuix", "Error $e")
+                LogUtils.e("Nuix", "RingV2[${address}] connect fail: ${e.message}", e)
                 disconnect()
                 return@launch
             }
@@ -307,16 +312,16 @@ class RingV2(
         connectTimeoutJob = scope.launch {
             delay(10000)
             if (status != NuixSensorState.CONNECTED) {
-                Log.e("Nuix", "Error: Timeout")
+                LogUtils.e("Nuix", "RingV2[${address}] connect timeout")
                 disconnect()
             }
         }
         commandJob = scope.launch {
             while (true) {
                 val command = commandChannel.receive()
-                Log.e("Nuix", command.joinToString(" "))
+                LogUtils.d("Nuix", "write command: " + command.joinToString(" "))
                 write(command)
-                Log.e("Nuix", "write command end")
+                LogUtils.d("Nuix", "write command end")
                 delay(100)
             }
         }
@@ -324,7 +329,7 @@ class RingV2(
 
     override fun disconnect() {
         if (!disconnectable()) return
-        Log.e("Nuix", "Manual disconnect")
+        LogUtils.d("Nuix", "RingV2[${address}] Manual disconnect")
         connection?.disconnect()
         readJob?.cancel()
         connectJob.cancel()
@@ -340,7 +345,7 @@ class RingV2(
             writeCharacteristic.write(DataByteArray(data), writeType = BleWriteType.NO_RESPONSE)
         }
         catch (e: Exception) {
-            Log.e("Nuix", "Error $e")
+            LogUtils.e("Nuix", "write characteristic failed, data: ${data.joinToString(" ")}, error: ${e.message}", e)
         }
         delay(50)
     }
@@ -370,22 +375,27 @@ class RingV2(
     }
 
     suspend fun openMic() {
+        LogUtils.d("Nuix", "send open mic")
         commandChannel.send(RingV2Spec.OPEN_MIC)
     }
 
     suspend fun closeMic() {
+        LogUtils.d("Nuix", "send close mic")
         commandChannel.send(RingV2Spec.CLOSE_MIC)
     }
 
     suspend fun openIMU() {
+        LogUtils.d("Nuix", "send open imu, command job alive: ${commandJob?.isActive}, command channel isClosed: ${commandChannel.isClosedForSend}, isEmpty: ${commandChannel.isEmpty}")
         commandChannel.send(RingV2Spec.OPEN_6AXIS_IMU)
     }
 
     suspend fun closeIMU() {
+        LogUtils.d("Nuix", "send close imu")
         commandChannel.send(RingV2Spec.CLOSE_6AXIS_IMU)
     }
 
     suspend fun hidScreenshot() {
+        LogUtils.d("Nuix", "send screenshot hid, command job alive: ${commandJob?.isActive}, command channel isClosed: ${commandChannel.isClosedForSend}, isEmpty: ${commandChannel.isEmpty}")
         commandChannel.send(RingV2Spec.HID_SCREENSHOT)
     }
 
