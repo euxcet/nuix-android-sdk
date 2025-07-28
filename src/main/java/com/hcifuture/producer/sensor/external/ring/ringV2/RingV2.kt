@@ -180,7 +180,11 @@ class RingV2(
 //                write(RingV2Spec.GET_HARDWARE_VERSION)
 //                write(RingV2Spec.GET_SOFTWARE_VERSION)
             write(RingV2Spec.CLOSE_MIC)
-            // write(RingV2Spec.OPEN_6AXIS_IMU)s
+            write(RingV2Spec.OPEN_6AXIS_IMU)
+            scope.launch {
+                delay(500)
+                write(RingV2Spec.CLOSE_6AXIS_IMU)
+            }
             status = NuixSensorState.CONNECTED
             LogUtils.d("Nuix", "RingV2[${address}] connected")
         }
