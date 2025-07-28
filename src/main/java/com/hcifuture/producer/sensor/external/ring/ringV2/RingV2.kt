@@ -18,10 +18,13 @@ import com.hcifuture.producer.sensor.data.RingV2StatusType
 import com.hcifuture.producer.sensor.data.RingV2TouchRawData
 import com.hcifuture.producer.sensor.external.ring.RingSpec
 import com.hcifuture.producer.utils.LogUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -37,6 +40,7 @@ import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
 import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import java.util.Arrays
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.experimental.and
 
 @SuppressLint("MissingPermission")
@@ -85,7 +89,6 @@ class RingV2(
         },
     )
     private var commandJob: Job? = null
-    private  var connectTimeoutJob:  Job? = null
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -93,236 +96,275 @@ class RingV2(
         zeroGyro[2] = lastGyro[2]
     }
 
+    private var connectRetryMaxCount = 10
+
+    fun setConnectRetryMaxCount(count: Int) {
+        connectRetryMaxCount = count
+    }
+
+    private val isTryConnecting: AtomicBoolean = AtomicBoolean(false)
     override fun connect() {
         if (!connectable()) return
-        status = NuixSensorState.CONNECTING
-        connectJob = scope.launch {
-            try {
-                LogUtils.d("Nuix", "RingV2[${address}] connecting")
-                connection = ClientBleGatt.connect(context, address, scope)
-                if (!connection!!.isConnected) {
-                    status = NuixSensorState.DISCONNECTED
-                    if (connectTimeoutJob?.isActive == true) {
-                        connectTimeoutJob?.cancel()
+        if (isTryConnecting.compareAndSet(false, true)) {
+            var retryCount = 0
+            val retryDelaySecond = 1
+            connectJob = scope.launch {
+                while (retryCount < connectRetryMaxCount) {
+                    val doConnectJob = scope.launch {
+                        doConnect()
                     }
-                    return@launch
+                    val connectTimeoutJob: Job = launch {
+                        delay(10000)
+                        if (status != NuixSensorState.CONNECTED) {
+                            LogUtils.e("Nuix", "RingV2[${address}] connect timeout")
+                            doConnectJob.cancel()
+                        }
+                    }
+                    try {
+                        doConnectJob.join()
+                    } catch (_: Exception) { }
+                    if (connectTimeoutJob.isActive) {
+                        connectTimeoutJob.cancel()
+                    }
+                    if (status == NuixSensorState.CONNECTED) {
+                        break
+                    }
+                    retryCount++
+                    LogUtils.d("Nuix", "等待${retryDelaySecond}s后重连，第${retryCount}次重连")
+                    delay(1000L * retryDelaySecond)
                 }
-
-                connection!!.connectionState.onEach {
-                    if (it == GattConnectionState.STATE_DISCONNECTED) {
-                        disconnect()
+            }
+            commandJob = scope.launch {
+                while (true) {
+                    val command = commandChannel.receive()
+                    LogUtils.d("Nuix", "write command: " + command.joinToString(" "))
+                    if (status == NuixSensorState.CONNECTED) {
+                        write(command)
+                        LogUtils.d("Nuix", "write command end")
+                    } else {
+                        LogUtils.d("Nuix", "write command failed, not connected")
                     }
-                }.launchIn(scope)
+                    delay(100)
+                }
+            }
+        }
+    }
 
-                val service = connection!!.discoverServices().findService(RingV2Spec.SERVICE_UUID)!!
-                readCharacteristic = service.findCharacteristic(RingV2Spec.READ_CHARACTERISTIC_UUID)!!
-                writeCharacteristic = service.findCharacteristic(RingV2Spec.WRITE_CHARACTERISTIC_UUID)!!
-                LogUtils.d("Nuix", "RingV2[${address}] get characteristic")
-                readJob = readCharacteristic.getNotifications().onEach {
-                    val cmd = it.value[2]
-                    val subCmd = it.value[3]
-                    when {
-                        cmd == 0x11.toByte() && subCmd == 0x0.toByte() -> {
-                            // software version
-                            _statusFlow.emit(
-                                RingV2StatusData(
-                                type = RingV2StatusType.SOFTWARE_VERSION,
-                                softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
-                            ))
-                        }
-                        cmd == 0x11.toByte() && subCmd == 0x1.toByte() -> {
-                            // hardware version
-                            _statusFlow.emit(
-                                RingV2StatusData(
-                                    type = RingV2StatusType.HARDWARE_VERSION,
-                                    softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
-                                ))
-                        }
-                        cmd == 0x12.toByte() && subCmd == 0x0.toByte() -> {
-                            // battery level
-                            _statusFlow.emit(
-                                RingV2StatusData(
-                                    type = RingV2StatusType.BATTERY_LEVEL,
-                                    batteryLevel = it.value[4].toInt(),
-                                ))
-                        }
-                        cmd == 0x12.toByte() && subCmd == 0x1.toByte() -> {
-                            // battery status
-                            _statusFlow.emit(
-                                RingV2StatusData(
-                                    type = RingV2StatusType.BATTERY_STATUS,
-                                    batteryStatus = it.value[4].toInt(),
-                                ))
-                        }
-                        cmd == 0x40.toByte() && subCmd == 0x06.toByte() -> {
-                            if (it.value.size == 20) {
-                                scope.launch {
-                                    try {
-                                        connection?.requestMtu(247)
-                                    } catch (_: Exception) {
-                                    }
-                                }
-                            } else {
-                                // imu
-                                val acc_scale = 2048 * (1 shl ((it.value[4] / 4) and 3))
-                                val gyr_scale = 16.4f * (1 shl ((it.value[4] and 3).toInt()))
-//                                Log.e("Nuix", " " + acc_scale + " " + gyr_scale)
-                                val data =
-                                    it.value.slice(5 until 125)
-                                        .chunked(2)
-                                        .map { (l, h) ->
-                                            (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat()
-                                        }
-                                for (i in data.indices step 6) {
-                                    val imu = data.slice(i until i + 6).toMutableList()
-//                                    0 1 2 -> 1 2 0
-                                    imu[0] *= 9.8f / acc_scale
-                                    imu[1] *= 9.8f / acc_scale
-                                    imu[2] *= 9.8f / acc_scale
-                                    imu[3] *= 3.14f / 180.0f / gyr_scale
-                                    imu[4] *= 3.14f / 180.0f / gyr_scale
-                                    imu[5] *= 3.14f / 180.0f / gyr_scale
-                                    imu[0] = imu[1].also { imu[1] = imu[0] }
-                                    imu[1] = imu[2].also { imu[2] = imu[1] }
-                                    imu[3] = imu[4].also { imu[4] = imu[3] }
-                                    imu[4] = imu[5].also { imu[5] = imu[4] }
-                                    imu[0] = -imu[0]
-                                    imu[2] = -imu[2]
-                                    imu[3] = -imu[3]
-                                    imu[5] = -imu[5]
-                                    count += 1
-                                    _imuFlow.emit(
-                                        RingImuData(
-                                            data = imu,
-                                            timestamp = 0,
-                                        )
-                                    )
-                                }
-                            }
-                        }
-                        cmd == 0x61.toByte() && subCmd == 0x00.toByte() -> {
-                            // touch events, disabled
-                        }
-                        cmd == 0x61.toByte() && subCmd == 0x01.toByte() -> {
-                            var event: RingTouchEvent? = null
-                            if (it.value[7].and(0x01) > 0) {
-                                event = RingTouchEvent.TAP
-                            } else if (it.value[7].and(0x02) > 0) {
-                                event = RingTouchEvent.SWIPE_POSITIVE
-                            } else if (it.value[7].and(0x04) > 0) {
-                                event = RingTouchEvent.SWIPE_NEGATIVE
-                            } else if (it.value[7].and(0x08) > 0) {
-                                event = RingTouchEvent.FLICK_POSITIVE
-                            } else if (it.value[7].and(0x10) > 0) {
-                                event = RingTouchEvent.FLICK_NEGATIVE
-                            } else if (it.value[7].and(0x20) > 0) {
-                                event = RingTouchEvent.HOLD
-                            }
-                            if (event != null) {
-                                _touchEventFlow.emit(
-                                    RingTouchData(
-                                        data = event,
-                                        timestamp = System.currentTimeMillis(),
-                                    )
-                                )
-                            }
-                            // touch raw data
-                            _touchRawFlow.emit(
-                                RingV2TouchRawData(
-                                    data = it.value.slice(5 until it.value.size),
-                                    timestamp = System.currentTimeMillis(),
-                                )
-                            )
-                        }
-                        cmd == 0x61.toByte() && subCmd == 0x02.toByte() -> {
-                            val event = if (it.value[4].toInt() == 0) {
-                                RingTouchEvent.TAP
-                            } else if (it.value[4].toInt() == 1) {
-                                RingTouchEvent.HOLD
-                            } else if (it.value[4].toInt() == 2) {
-                                RingTouchEvent.DOUBLE_TAP
-                            } else if (it.value[4].toInt() == 3) {
-                                RingTouchEvent.DOWN
-                            } else if (it.value[4].toInt() == 4) {
-                                RingTouchEvent.UP
-                            } else if (it.value[4].toInt() == 5) {
-                                RingTouchEvent.LEAVE
-                            } else {
-                                RingTouchEvent.UNKNOWN
-                            }
-                            _touchEventFlow.emit(
-                                RingTouchData(
-                                    data = event,
-                                    timestamp = System.currentTimeMillis(),
-                                )
-                            )
-                        }
-                        cmd == 0x71.toByte() -> {
-                            // microphone
-//                            val length = it.value[4].toInt().and(0xFF) or it.value[5].toInt().shl(8)
-//                            val sequenceId = it.value[6].toInt().and(0xFF) or it.value[7].toInt().and(0xFF).shl(8) or
-//                                             it.value[8].toInt().and(0xFF).shl(16) or it.value[9].toInt().shl(24)
-                            if (it.value.size > 200) {
-                                _audioFlow.emit(
-                                    RingV2AudioData(
-                                        length = 200,
-                                        sequenceId = 0,
-                                        data = it.value.slice(it.value.size - 200 until it.value.size),
-                                    )
-                                )
-                            }
-                        }
-                        cmd == 0x31.toByte() -> {
-                            _ppgFlow.emit(
-                                RingV2PPGData(
-                                    type = subCmd.toInt(),
-                                    raw = it.value.slice(4 until it.value.size)
-                                )
-                            )
-                        }
-                        cmd == 0x32.toByte() -> {
-                            _ppgFlow.emit(
-                                RingV2PPGData(
-                                    type = subCmd + 4,
-                                    raw = it.value.slice(4 until it.value.size)
-                                )
-                            )
-                        }
-                    }
-                }.launchIn(scope)
-                LogUtils.d("Nuix", "RingV2[${address}] send commands")
-                write(RingV2Spec.GET_CONTROL)
+    private suspend fun doConnect() {
+        try {
+            status = NuixSensorState.CONNECTING
+            LogUtils.d("Nuix", "RingV2[${address}] connecting")
+
+            connection = ClientBleGatt.connect(context, address, scope)
+            if (!connection!!.isConnected) {
+                status = NuixSensorState.DISCONNECTED
+                return
+            }
+
+            connection!!.connectionState.onEach {
+                if (it == GattConnectionState.STATE_DISCONNECTED) {
+                    onDisconnect()
+                }
+            }.launchIn(scope)
+
+            val service = connection!!.discoverServices().findService(RingV2Spec.SERVICE_UUID)!!
+            readCharacteristic = service.findCharacteristic(RingV2Spec.READ_CHARACTERISTIC_UUID)!!
+            writeCharacteristic = service.findCharacteristic(RingV2Spec.WRITE_CHARACTERISTIC_UUID)!!
+            LogUtils.d("Nuix", "RingV2[${address}] get characteristic")
+            readJob = readCharacteristic.getNotifications().onEach {
+                onCharacteristic(it)
+            }.launchIn(scope)
+            LogUtils.d("Nuix", "RingV2[${address}] send commands")
+            write(RingV2Spec.GET_CONTROL)
 //                write(RingV2Spec.GET_BATTERY_LEVEL)
 //                write(RingV2Spec.GET_HARDWARE_VERSION)
 //                write(RingV2Spec.GET_SOFTWARE_VERSION)
-                write(RingV2Spec.CLOSE_MIC)
-                // write(RingV2Spec.OPEN_6AXIS_IMU)s
-                status = NuixSensorState.CONNECTED
-                LogUtils.d("Nuix", "RingV2[${address}] connected")
-            }
-            catch (e: Exception) {
-                LogUtils.e("Nuix", "RingV2[${address}] connect fail: ${e.message}", e)
-                disconnect()
-                return@launch
-            }
+            write(RingV2Spec.CLOSE_MIC)
+            // write(RingV2Spec.OPEN_6AXIS_IMU)s
+            status = NuixSensorState.CONNECTED
+            LogUtils.d("Nuix", "RingV2[${address}] connected")
         }
-        if (connectTimeoutJob?.isActive == true) {
-            connectTimeoutJob?.cancel()
-        }
-        connectTimeoutJob = scope.launch {
-            delay(10000)
-            if (status != NuixSensorState.CONNECTED) {
-                LogUtils.e("Nuix", "RingV2[${address}] connect timeout")
-                disconnect()
+        catch (e: Exception) {
+            LogUtils.e("Nuix", "RingV2[${address}] connect fail: ${e.message}", e)
+            if (connection?.isConnected == true) {
+                connection?.disconnect()
             }
+            if(readJob?.isActive == true) {
+                readJob?.cancel()
+            }
+            status = NuixSensorState.DISCONNECTED
         }
-        commandJob = scope.launch {
-            while (true) {
-                val command = commandChannel.receive()
-                LogUtils.d("Nuix", "write command: " + command.joinToString(" "))
-                write(command)
-                LogUtils.d("Nuix", "write command end")
-                delay(100)
+    }
+
+    private suspend fun onCharacteristic(it: DataByteArray) {
+        val cmd = it.value[2]
+        val subCmd = it.value[3]
+        when {
+            cmd == 0x11.toByte() && subCmd == 0x0.toByte() -> {
+                // software version
+                _statusFlow.emit(
+                    RingV2StatusData(
+                        type = RingV2StatusType.SOFTWARE_VERSION,
+                        softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
+                    ))
+            }
+            cmd == 0x11.toByte() && subCmd == 0x1.toByte() -> {
+                // hardware version
+                _statusFlow.emit(
+                    RingV2StatusData(
+                        type = RingV2StatusType.HARDWARE_VERSION,
+                        softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
+                    ))
+            }
+            cmd == 0x12.toByte() && subCmd == 0x0.toByte() -> {
+                // battery level
+                _statusFlow.emit(
+                    RingV2StatusData(
+                        type = RingV2StatusType.BATTERY_LEVEL,
+                        batteryLevel = it.value[4].toInt(),
+                    ))
+            }
+            cmd == 0x12.toByte() && subCmd == 0x1.toByte() -> {
+                // battery status
+                _statusFlow.emit(
+                    RingV2StatusData(
+                        type = RingV2StatusType.BATTERY_STATUS,
+                        batteryStatus = it.value[4].toInt(),
+                    ))
+            }
+            cmd == 0x40.toByte() && subCmd == 0x06.toByte() -> {
+                if (it.value.size == 20) {
+                    scope.launch {
+                        try {
+                            connection?.requestMtu(247)
+                        } catch (_: Exception) {
+                        }
+                    }
+                } else {
+                    // imu
+                    val acc_scale = 2048 * (1 shl ((it.value[4] / 4) and 3))
+                    val gyr_scale = 16.4f * (1 shl ((it.value[4] and 3).toInt()))
+//                                Log.e("Nuix", " " + acc_scale + " " + gyr_scale)
+                    val data =
+                        it.value.slice(5 until 125)
+                            .chunked(2)
+                            .map { (l, h) ->
+                                (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat()
+                            }
+                    for (i in data.indices step 6) {
+                        val imu = data.slice(i until i + 6).toMutableList()
+//                                    0 1 2 -> 1 2 0
+                        imu[0] *= 9.8f / acc_scale
+                        imu[1] *= 9.8f / acc_scale
+                        imu[2] *= 9.8f / acc_scale
+                        imu[3] *= 3.14f / 180.0f / gyr_scale
+                        imu[4] *= 3.14f / 180.0f / gyr_scale
+                        imu[5] *= 3.14f / 180.0f / gyr_scale
+                        imu[0] = imu[1].also { imu[1] = imu[0] }
+                        imu[1] = imu[2].also { imu[2] = imu[1] }
+                        imu[3] = imu[4].also { imu[4] = imu[3] }
+                        imu[4] = imu[5].also { imu[5] = imu[4] }
+                        imu[0] = -imu[0]
+                        imu[2] = -imu[2]
+                        imu[3] = -imu[3]
+                        imu[5] = -imu[5]
+                        count += 1
+                        _imuFlow.emit(
+                            RingImuData(
+                                data = imu,
+                                timestamp = 0,
+                            )
+                        )
+                    }
+                }
+            }
+            cmd == 0x61.toByte() && subCmd == 0x00.toByte() -> {
+                // touch events, disabled
+            }
+            cmd == 0x61.toByte() && subCmd == 0x01.toByte() -> {
+                var event: RingTouchEvent? = null
+                if (it.value[7].and(0x01) > 0) {
+                    event = RingTouchEvent.TAP
+                } else if (it.value[7].and(0x02) > 0) {
+                    event = RingTouchEvent.SWIPE_POSITIVE
+                } else if (it.value[7].and(0x04) > 0) {
+                    event = RingTouchEvent.SWIPE_NEGATIVE
+                } else if (it.value[7].and(0x08) > 0) {
+                    event = RingTouchEvent.FLICK_POSITIVE
+                } else if (it.value[7].and(0x10) > 0) {
+                    event = RingTouchEvent.FLICK_NEGATIVE
+                } else if (it.value[7].and(0x20) > 0) {
+                    event = RingTouchEvent.HOLD
+                }
+                if (event != null) {
+                    _touchEventFlow.emit(
+                        RingTouchData(
+                            data = event,
+                            timestamp = System.currentTimeMillis(),
+                        )
+                    )
+                }
+                // touch raw data
+                _touchRawFlow.emit(
+                    RingV2TouchRawData(
+                        data = it.value.slice(5 until it.value.size),
+                        timestamp = System.currentTimeMillis(),
+                    )
+                )
+            }
+            cmd == 0x61.toByte() && subCmd == 0x02.toByte() -> {
+                val event = if (it.value[4].toInt() == 0) {
+                    RingTouchEvent.TAP
+                } else if (it.value[4].toInt() == 1) {
+                    RingTouchEvent.HOLD
+                } else if (it.value[4].toInt() == 2) {
+                    RingTouchEvent.DOUBLE_TAP
+                } else if (it.value[4].toInt() == 3) {
+                    RingTouchEvent.DOWN
+                } else if (it.value[4].toInt() == 4) {
+                    RingTouchEvent.UP
+                } else if (it.value[4].toInt() == 5) {
+                    RingTouchEvent.LEAVE
+                } else {
+                    RingTouchEvent.UNKNOWN
+                }
+                _touchEventFlow.emit(
+                    RingTouchData(
+                        data = event,
+                        timestamp = System.currentTimeMillis(),
+                    )
+                )
+            }
+            cmd == 0x71.toByte() -> {
+                // microphone
+//                            val length = it.value[4].toInt().and(0xFF) or it.value[5].toInt().shl(8)
+//                            val sequenceId = it.value[6].toInt().and(0xFF) or it.value[7].toInt().and(0xFF).shl(8) or
+//                                             it.value[8].toInt().and(0xFF).shl(16) or it.value[9].toInt().shl(24)
+                if (it.value.size > 200) {
+                    _audioFlow.emit(
+                        RingV2AudioData(
+                            length = 200,
+                            sequenceId = 0,
+                            data = it.value.slice(it.value.size - 200 until it.value.size),
+                        )
+                    )
+                }
+            }
+            cmd == 0x31.toByte() -> {
+                _ppgFlow.emit(
+                    RingV2PPGData(
+                        type = subCmd.toInt(),
+                        raw = it.value.slice(4 until it.value.size)
+                    )
+                )
+            }
+            cmd == 0x32.toByte() -> {
+                _ppgFlow.emit(
+                    RingV2PPGData(
+                        type = subCmd + 4,
+                        raw = it.value.slice(4 until it.value.size)
+                    )
+                )
             }
         }
     }
@@ -331,12 +373,23 @@ class RingV2(
         if (!disconnectable()) return
         LogUtils.d("Nuix", "RingV2[${address}] Manual disconnect")
         connection?.disconnect()
-        readJob?.cancel()
-        connectJob.cancel()
-        commandJob?.cancel()
+        onDisconnect()
+    }
+
+    private fun onDisconnect() {
+        if (status == NuixSensorState.DISCONNECTED) {
+            return
+        }
+        LogUtils.d("Nuix", "RingV2[${address}] Disconnected")
         status = NuixSensorState.DISCONNECTED
-        if (connectTimeoutJob?.isActive == true) {
-            connectTimeoutJob?.cancel()
+        if (readJob?.isActive ==  true) {
+            readJob?.cancel()
+        }
+        if (commandJob?.isActive == true) {
+            commandJob?.cancel()
+        }
+        if (connectJob.isActive) {
+            connectJob.cancel()
         }
     }
 
