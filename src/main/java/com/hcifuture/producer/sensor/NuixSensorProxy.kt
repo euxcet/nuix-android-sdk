@@ -16,6 +16,7 @@ class NuixSensorProxy(
 ): NuixSensor() {
     override val defaultCollectors: MutableMap<String, Collector> = mutableMapOf()
     override val flows: MutableMap<String, MutableSharedFlow<Any>> = mutableMapOf()
+    override val macAddress get() = target?.macAddress ?: ""
 
     private val jobs: MutableList<Job> = mutableListOf()
 

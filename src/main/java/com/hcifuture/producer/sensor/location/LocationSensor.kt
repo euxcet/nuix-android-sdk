@@ -29,6 +29,7 @@ class LocationSensor(val context: Context) : NuixSensor() {
     private var scope = CoroutineScope(Dispatchers.Default)
 
     override var name: String = "gps"
+    override val macAddress: String = ""
 
     companion object {
         private const val TAG = "LocationSensor"

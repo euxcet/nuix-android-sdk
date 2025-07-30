@@ -32,6 +32,8 @@ class AudioSensor (
     private var scope = CoroutineScope(Job() + Dispatchers.Default)
     private lateinit var audioServiceConnection: ServiceConnection
 
+    override val macAddress: String = ""
+
     override val defaultCollectors: Map<String, Collector> = mapOf<String, Collector>(
         AudioSensorSpec.audioFlowName(this) to
                 AudioCollector(listOf(this), listOf(), "${name}.mp4")

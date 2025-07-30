@@ -19,7 +19,10 @@ import kotlinx.coroutines.launch
 class TouchSensor(
 ) : NuixSensor() {
     private var scope = CoroutineScope(Job() + Dispatchers.Default)
+
     override val name: String = "Touch"
+    override val macAddress: String = ""
+
     private val _touchFlow = MutableSharedFlow<TouchSensorData>()
     override val flows = mapOf(
         TouchSensorSpec.touchFlowName(this) to _touchFlow.asSharedFlow(),

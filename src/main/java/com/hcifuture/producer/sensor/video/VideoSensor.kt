@@ -28,6 +28,7 @@ class VideoSensor(val context: Context): NuixSensor() {
     private lateinit var videoServiceConnection: ServiceConnection
 
     override var name: String = "Camera"
+    override val macAddress: String = ""
 
     override val flows: Map<String, StateFlow<Any>> = mapOf(
         NuixSensorSpec.lifecycleFlowName(this) to lifecycleFlow.asStateFlow()

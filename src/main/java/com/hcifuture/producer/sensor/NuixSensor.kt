@@ -43,6 +43,7 @@ abstract class NuixSensor {
      * The names of the sensors should be different from each other.
      */
     abstract val name: String
+    abstract val macAddress: String
     open var status: NuixSensorState = NuixSensorState.SCANNING
         set(state) {
             field = state

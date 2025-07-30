@@ -57,6 +57,7 @@ class InternalSensor(
         Sensor.TYPE_MOTION_DETECT -> InternalSensorSpec.motionDetect
         else -> "UNKNOWN"
     }
+    override val macAddress: String = ""
     override val flows = mapOf(
         InternalSensorSpec.eventFlowName(this) to _eventFlow.asSharedFlow(),
         NuixSensorSpec.lifecycleFlowName(this) to lifecycleFlow.asStateFlow(),

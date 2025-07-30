@@ -47,6 +47,7 @@ class RingV1(
     private val _imuFlow = MutableSharedFlow<RingImuData>()
     private val _touchFlow = MutableSharedFlow<RingTouchData>()
     override val name: String = "RING[${deviceName}|${address}]"
+    override val macAddress: String = address
     override val flows = mapOf(
         RingSpec.imuFlowName(this) to _imuFlow.asSharedFlow(),
         RingSpec.touchEventFlowName(this) to _touchFlow.asSharedFlow(),

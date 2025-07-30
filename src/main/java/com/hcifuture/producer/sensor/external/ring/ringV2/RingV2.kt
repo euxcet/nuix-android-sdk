@@ -61,6 +61,7 @@ class RingV2(
     private val _audioFlow = MutableSharedFlow<RingV2AudioData>()
     private val _ppgFlow = MutableSharedFlow<RingV2PPGData>()
     override val name: String = "RING[${deviceName}|${address}]"
+    override val macAddress: String = address
     override val flows = mapOf(
         RingSpec.imuFlowName(this) to _imuFlow.asSharedFlow(),
         RingSpec.touchEventFlowName(this) to _touchEventFlow.asSharedFlow(),
@@ -89,6 +90,7 @@ class RingV2(
         },
     )
     private var commandJob: Job? = null
+    private var batteryJob: Job? = null
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -114,7 +116,7 @@ class RingV2(
                         doConnect()
                     }
                     val connectTimeoutJob: Job = launch {
-                        delay(10000)
+                        delay(4000)
                         if (status != NuixSensorState.CONNECTED) {
                             LogUtils.e("Nuix", "RingV2[${address}] connect timeout")
                             doConnectJob.cancel()
@@ -133,6 +135,7 @@ class RingV2(
                     LogUtils.d("Nuix", "等待${retryDelaySecond}s后重连，第${retryCount}次重连")
                     delay(1000L * retryDelaySecond)
                 }
+                isTryConnecting.set(false)
             }
             commandJob = scope.launch {
                 while (true) {
@@ -145,6 +148,12 @@ class RingV2(
                         LogUtils.d("Nuix", "write command failed, not connected")
                     }
                     delay(100)
+                }
+            }
+            batteryJob = scope.launch {
+                while (true) {
+                    write(RingV2Spec.GET_BATTERY_LEVEL)
+                    delay(60000)
                 }
             }
         }
@@ -176,14 +185,14 @@ class RingV2(
             }.launchIn(scope)
             LogUtils.d("Nuix", "RingV2[${address}] send commands")
             write(RingV2Spec.GET_CONTROL)
-//                write(RingV2Spec.GET_BATTERY_LEVEL)
-//                write(RingV2Spec.GET_HARDWARE_VERSION)
-//                write(RingV2Spec.GET_SOFTWARE_VERSION)
             write(RingV2Spec.CLOSE_MIC)
             write(RingV2Spec.OPEN_6AXIS_IMU)
             scope.launch {
                 delay(500)
                 write(RingV2Spec.CLOSE_6AXIS_IMU)
+                write(RingV2Spec.GET_BATTERY_LEVEL)
+                write(RingV2Spec.GET_HARDWARE_VERSION)
+                write(RingV2Spec.GET_SOFTWARE_VERSION)
             }
             status = NuixSensorState.CONNECTED
             LogUtils.d("Nuix", "RingV2[${address}] connected")
@@ -217,7 +226,7 @@ class RingV2(
                 _statusFlow.emit(
                     RingV2StatusData(
                         type = RingV2StatusType.HARDWARE_VERSION,
-                        softwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
+                        hardwareVersion = it.value.slice(4 until it.value.size).map { it.toInt().toChar() }.joinToString(""),
                     ))
             }
             cmd == 0x12.toByte() && subCmd == 0x0.toByte() -> {
