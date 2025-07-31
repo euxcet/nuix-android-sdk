@@ -36,6 +36,7 @@ import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
 import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import java.util.Arrays
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.experimental.and
 
 @SuppressLint("MissingPermission")
@@ -80,6 +81,7 @@ class RingV2(
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val commandChannel: Channel<ByteArray> = Channel()
+    private val jobCreated = AtomicBoolean(false)
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -302,7 +304,7 @@ class RingV2(
             }
         }
         scope.launch {
-            delay(2000)
+            delay(4000)
             if (status != NuixSensorState.CONNECTED) {
                 Log.e("Nuix", "Error: Timeout")
                 disconnect()
@@ -310,15 +312,30 @@ class RingV2(
                 getControl()
             }
         }
-        scope.launch {
-            while (true) {
-                val command = commandChannel.receive()
-                if (status != NuixSensorState.CONNECTED) {
-                    break
-                }
-                write(command)
-            }
+        createJob()
+    }
+
+    fun createJob() {
+        if (jobCreated.get()) {
+            return
         }
+        jobCreated.set(true)
+//        scope.launch {
+//            while (true) {
+//                val command = commandChannel.receive()
+//                Log.e("Nuix", "get command $command $status")
+//                if (status == NuixSensorState.CONNECTED) {
+//                    write(command)
+//                }
+//            }
+//        }
+//        scope.launch {
+//            while (true) {
+//                delay(30000)
+//                getControl()
+//                getBatteryLevel()
+//            }
+//        }
     }
 
     override fun disconnect() {
@@ -332,6 +349,7 @@ class RingV2(
 
     suspend fun write(data: ByteArray) {
         try {
+            Log.e("Nuix", "write $data")
             writeCharacteristic.write(DataByteArray(data), writeType = BleWriteType.NO_RESPONSE)
         }
         catch (e: Exception) {
@@ -343,44 +361,57 @@ class RingV2(
     suspend fun openGreenPPG(
         freq: Int = 0, // [0: 25hz, 1: 100hz]
     ) {
-        commandChannel.send(RingV2Spec.openGreenPPG(freq))
+//        commandChannel.send(RingV2Spec.openGreenPPG(freq))
     }
 
     suspend fun closeGreenPPG() {
-        commandChannel.send(RingV2Spec.CLOSE_GREEN_PPG)
+//        commandChannel.send(RingV2Spec.CLOSE_GREEN_PPG)
     }
 
     suspend fun openRedPPG(
         freq: Int = 0, // [0: 25hz, 1: 100hz]
     ) {
-        commandChannel.send(RingV2Spec.openRedPPG(freq))
+//        commandChannel.send(RingV2Spec.openRedPPG(freq))
     }
 
     suspend fun closeRedPPG() {
-        commandChannel.send(RingV2Spec.CLOSE_RED_PPG)
+//        commandChannel.send(RingV2Spec.CLOSE_RED_PPG)
     }
 
     suspend fun openMic() {
-        commandChannel.send(RingV2Spec.OPEN_MIC)
+        Log.e("Nuix", "command channel OPEN MIC")
+        write(RingV2Spec.OPEN_MIC)
+//        commandChannel.send(RingV2Spec.OPEN_MIC)
     }
 
     suspend fun closeMic() {
-        commandChannel.send(RingV2Spec.CLOSE_MIC)
+        Log.e("Nuix", "command channel CLOSE MIC")
+        write(RingV2Spec.CLOSE_MIC)
+//        commandChannel.send(RingV2Spec.CLOSE_MIC)
     }
 
     suspend fun openIMU() {
-        commandChannel.send(RingV2Spec.OPEN_6AXIS_IMU)
+        write(RingV2Spec.OPEN_6AXIS_IMU)
+//        commandChannel.send(RingV2Spec.OPEN_6AXIS_IMU)
     }
 
     suspend fun closeIMU() {
-        commandChannel.send(RingV2Spec.CLOSE_6AXIS_IMU)
+        write(RingV2Spec.CLOSE_6AXIS_IMU)
+//        commandChannel.send(RingV2Spec.CLOSE_6AXIS_IMU)
     }
 
     suspend fun hidScreenshot() {
-        commandChannel.send(RingV2Spec.HID_SCREENSHOT)
+        write(RingV2Spec.HID_SCREENSHOT)
+//        commandChannel.send(RingV2Spec.HID_SCREENSHOT)
     }
 
     suspend fun getControl() {
-        commandChannel.send(RingV2Spec.GET_CONTROL)
+        write(RingV2Spec.GET_CONTROL)
+//        commandChannel.send(RingV2Spec.GET_CONTROL)
+    }
+
+    suspend fun getBatteryLevel() {
+        write(RingV2Spec.GET_BATTERY_LEVEL)
+//        commandChannel.send(RingV2Spec.GET_BATTERY_LEVEL)
     }
 }
