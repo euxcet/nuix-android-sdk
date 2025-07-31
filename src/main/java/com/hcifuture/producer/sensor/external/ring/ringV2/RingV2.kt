@@ -35,6 +35,7 @@ import no.nordicsemi.android.kotlin.ble.core.data.BleWriteType
 import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
 import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
+import okio.ByteString.Companion.toByteString
 import java.util.Arrays
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.experimental.and
@@ -349,7 +350,7 @@ class RingV2(
 
     suspend fun write(data: ByteArray) {
         try {
-            Log.e("Nuix", "write $data")
+            Log.e("Nuix", "write ${data.toByteString()}")
             writeCharacteristic.write(DataByteArray(data), writeType = BleWriteType.NO_RESPONSE)
         }
         catch (e: Exception) {
