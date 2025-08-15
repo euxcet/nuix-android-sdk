@@ -54,6 +54,14 @@ class NuixSensorManager @Inject constructor(
         touchSensorProvider,
         locationProvider,
     )
+
+    private val internalProviders = listOf(
+        internalSensorProvider,
+        videoProvider,
+        audioProvider,
+        locationProvider,
+    )
+
     // Sensors
     private val _sensors: MutableMap<NuixSensorProvider, MutableList<NuixSensor>> = mutableMapOf()
     val sensors: Map<NuixSensorProvider, List<NuixSensor>> = _sensors
@@ -225,6 +233,10 @@ class NuixSensorManager @Inject constructor(
 
     suspend fun scanAll(timeout: Long = 5000L) {
         scan(providers, timeout)
+    }
+
+    suspend fun scanInternal() {
+        scan(internalProviders, 1000L)
     }
 
     suspend fun stopScanAll() {
