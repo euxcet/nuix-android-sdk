@@ -83,6 +83,7 @@ class RingV2(
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val commandChannel: Channel<ByteArray> = Channel()
     private val jobCreated = AtomicBoolean(false)
+    private var isClicking = false
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -236,20 +237,50 @@ class RingV2(
                             } else if (it.value[4].toInt() == 2) {
                                 RingTouchEvent.DOUBLE_TAP
                             } else if (it.value[4].toInt() == 3) {
-                                RingTouchEvent.DOWN
+                                RingTouchEvent.TAP
                             } else if (it.value[4].toInt() == 4) {
-                                RingTouchEvent.UP
+                                RingTouchEvent.TAP
                             } else if (it.value[4].toInt() == 5) {
                                 RingTouchEvent.LEAVE
                             } else {
                                 RingTouchEvent.UNKNOWN
                             }
-                            _touchEventFlow.emit(
-                                RingTouchData(
-                                    data = event,
-                                    timestamp = System.currentTimeMillis(),
+                            Log.e("doubleclick", event.toString())
+
+                            if (event == RingTouchEvent.TAP) {
+                                if (isClicking) {
+                                    isClicking = false
+                                    Log.e("doubleclick", "Double click")
+                                    _touchEventFlow.emit(
+                                        RingTouchData(
+                                            data = RingTouchEvent.DOUBLE_TAP,
+                                            timestamp = System.currentTimeMillis(),
+                                        )
+                                    )
+                                } else {
+                                    isClicking = true
+                                    scope.launch {
+                                        delay(350)
+                                        if (isClicking) {
+                                            Log.e("doubleclick", "click")
+                                            RingTouchData(
+                                                data = RingTouchEvent.DOUBLE_TAP,
+                                                timestamp = System.currentTimeMillis(),
+                                            )
+                                            isClicking = false
+                                        }
+                                    }
+                                }
+                            }
+
+                            else {
+                                _touchEventFlow.emit(
+                                    RingTouchData(
+                                        data = event,
+                                        timestamp = System.currentTimeMillis(),
+                                    )
                                 )
-                            )
+                            }
                         }
                         cmd == 0x71.toByte() -> {
                             // microphone
