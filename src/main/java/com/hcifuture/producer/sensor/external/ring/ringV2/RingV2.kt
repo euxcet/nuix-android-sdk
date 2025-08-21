@@ -245,12 +245,10 @@ class RingV2(
                             } else {
                                 RingTouchEvent.UNKNOWN
                             }
-                            Log.e("doubleclick", event.toString())
 
                             if (event == RingTouchEvent.TAP) {
                                 if (isClicking) {
                                     isClicking = false
-                                    Log.e("doubleclick", "Double click")
                                     _touchEventFlow.emit(
                                         RingTouchData(
                                             data = RingTouchEvent.DOUBLE_TAP,
@@ -262,7 +260,6 @@ class RingV2(
                                     scope.launch {
                                         delay(350)
                                         if (isClicking) {
-                                            Log.e("doubleclick", "click")
                                             RingTouchData(
                                                 data = RingTouchEvent.DOUBLE_TAP,
                                                 timestamp = System.currentTimeMillis(),
