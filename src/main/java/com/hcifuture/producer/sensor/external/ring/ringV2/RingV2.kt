@@ -260,9 +260,11 @@ class RingV2(
                                     scope.launch {
                                         delay(350)
                                         if (isClicking) {
-                                            RingTouchData(
-                                                data = RingTouchEvent.DOUBLE_TAP,
-                                                timestamp = System.currentTimeMillis(),
+                                            _touchEventFlow.emit(
+                                                RingTouchData(
+                                                    data = RingTouchEvent.TAP,
+                                                    timestamp = System.currentTimeMillis(),
+                                                )
                                             )
                                             isClicking = false
                                         }
