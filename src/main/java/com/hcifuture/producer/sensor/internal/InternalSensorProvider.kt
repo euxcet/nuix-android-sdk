@@ -24,6 +24,8 @@ class InternalSensorProvider @Inject constructor(
         InternalSensor(sensorManager, InternalSensorConfig(Sensor.TYPE_GYROSCOPE)),
         InternalSensor(sensorManager, InternalSensorConfig(Sensor.TYPE_LIGHT)),
         InternalSensor(sensorManager, InternalSensorConfig(Sensor.TYPE_MAGNETIC_FIELD)),
+        InternalSensor(sensorManager, InternalSensorConfig(Sensor.TYPE_LINEAR_ACCELERATION)),
+        InternalSensor(sensorManager, InternalSensorConfig(Sensor.TYPE_PROXIMITY)),
     )
 
     override fun get(): List<InternalSensor> {

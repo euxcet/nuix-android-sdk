@@ -4,6 +4,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.util.Log
 
 import com.hcifuture.producer.recorder.Collector
 import com.hcifuture.producer.recorder.collectors.BytesDataCollector
@@ -55,6 +56,7 @@ class InternalSensor(
         Sensor.TYPE_MAGNETIC_FIELD -> InternalSensorSpec.magneticField
         Sensor.TYPE_MAGNETIC_FIELD_UNCALIBRATED -> InternalSensorSpec.magneticFieldUncalibrated
         Sensor.TYPE_MOTION_DETECT -> InternalSensorSpec.motionDetect
+        Sensor.TYPE_PROXIMITY -> InternalSensorSpec.proximity
         else -> "UNKNOWN"
     }
     override val macAddress: String = ""

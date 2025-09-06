@@ -32,6 +32,7 @@ class InternalSensorSpec {
         const val magneticField: String = "INTERNAL_MAGNETIC_FIELD"
         const val magneticFieldUncalibrated: String = "INTERNAL_MAGNETIC_FIELD_UNCALIBRATED"
         const val motionDetect: String = "INTERNAL_MOTION_DETECT"
+        const val proximity: String = "INTERNAL_PROXIMITY"
 
         fun eventFlowName(sensor: NuixSensor): String {
             return NuixSensorSpec.flowName(sensor, "event_shared")
