@@ -30,7 +30,7 @@ class InternalSensorProvider @Inject constructor(
         return sensors.toList()
     }
 
-    override fun scan(): Flow<List<InternalSensor>> {
+    override fun scan(timeout: Long): Flow<List<InternalSensor>> {
         return listOf(sensors).asFlow()
     }
 }

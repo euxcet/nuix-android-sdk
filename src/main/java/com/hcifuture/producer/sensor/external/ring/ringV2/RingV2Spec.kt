@@ -31,6 +31,9 @@ class RingV2Spec {
         val CLOSE_GREEN_PPG      = byteArrayOf(0x00, 0x00, 0x31, 0x02)
         val CLOSE_RED_PPG        = byteArrayOf(0x00, 0x00, 0x32, 0x02)
 
+        val START_RECORD         = byteArrayOf(0x00, 0x00, 0x3D, 0x00, 0x00, 0x01, 0x01, 0x03)
+        val STOP_RECORD          = byteArrayOf(0x00, 0x00, 0x3D, 0x06)
+
         fun openGreenPPG(
             freq: Int = 0, // [0: 25hz, 1: 100hz]
         ) : ByteArray {

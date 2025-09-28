@@ -25,7 +25,7 @@ class RingV1Provider @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    override fun scan(): Flow<List<RingV1>> {
+    override fun scan(timeout: Long): Flow<List<RingV1>> {
         val aggregator = BleScanResultAggregator()
         Log.e("Nuix", "ringV1 scan")
         return BleScanner(context).scan()

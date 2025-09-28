@@ -18,7 +18,7 @@ class TouchSensorProvider @Inject constructor(
         return sensors.toList()
     }
 
-    override fun scan(): Flow<List<TouchSensor>> {
+    override fun scan(timeout: Long): Flow<List<TouchSensor>> {
         return listOf(sensors).asFlow()
     }
 }

@@ -195,7 +195,7 @@ class NuixSensorManager @Inject constructor(
             return
         }
         _scanJob[provider] = scope.launch {
-            provider.scan().collect { sensors ->
+            provider.scan(timeout=timeout).collect { sensors ->
                 sensors.forEach {
                     Log.e("Nuix", "Scanned sensors: ${it.name}")
                     addSensor(provider, it)

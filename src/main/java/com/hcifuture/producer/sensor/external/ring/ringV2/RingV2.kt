@@ -67,8 +67,8 @@ class RingV2(
     override val defaultCollectors: Map<String, Collector> = mapOf<String, Collector>(
         RingSpec.imuFlowName(this) to
                 BytesDataCollector(listOf(this), listOf(_imuFlow.asSharedFlow()), "ringV2[${address}]IMU.bin"),
-        RingSpec.touchEventFlowName(this) to
-                BytesDataCollector(listOf(this), listOf(_touchEventFlow.asSharedFlow()), "ringV2[${address}]TouchEvent.bin"),
+//        RingSpec.touchEventFlowName(this) to
+//                BytesDataCollector(listOf(this), listOf(_touchEventFlow.asSharedFlow()), "ringV2[${address}]TouchEvent.bin"),
         RingSpec.ppgFlowName(this) to
                 BytesDataCollector(listOf(this), listOf(_ppgFlow.asSharedFlow()), "ringV2[${address}]PPG.bin"),
     )
@@ -115,8 +115,8 @@ class RingV2(
 //                    PhyOption.NO_PREFERRED,
 //                )
 
-//                val mtu = connection?.requestMtu(247)
-//                Log.e("Nuix", "mtu is " + mtu)
+                val mtu = connection?.requestMtu(247)
+                Log.e("Nuix", "mtu is " + mtu)
 
                 connection!!.connectionState.onEach {
                     if (it == GattConnectionState.STATE_DISCONNECTED) {
@@ -301,18 +301,27 @@ class RingV2(
                                 )
                             )
                         }
+                        cmd == 0x3D.toByte() -> {
+                            _ppgFlow.emit(
+                                RingV2PPGData(
+                                    type = 0,
+                                    raw = it.value.slice(4 until it.value.size)
+                                )
+                            )
+//                            if (it.value[3].toInt() == 0) {
+//                                Log.e("Nuix", "Data " + it.value.size + " " + it.value[3] + " " + it.value[4] + " " + it.value[5] + " " + it.value[6])
+//                            }
+//                            if (it.value[3].toInt() == 1) {
+//                                Log.e("Nuix", "Data " + it.value[4] + " " + it.value[5] + " " + it.value.size)
+//                            }
+//                            Log.e("Nuix", "Data " + it.value[4] + " " + it.value[5] + " " + it.value.size)
+                        }
                     }
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
-//                commandJob = scope.launch {
-                    write(RingV2Spec.GET_CONTROL)
-                    write(RingV2Spec.GET_BATTERY_LEVEL)
-                    write(RingV2Spec.GET_HARDWARE_VERSION)
-                    write(RingV2Spec.GET_SOFTWARE_VERSION)
-                    write(RingV2Spec.OPEN_6AXIS_IMU)
-                    status = NuixSensorState.CONNECTED
-                    Log.e("Nuix", "RingV2[${address}] connected")
-//                }
+                write(RingV2Spec.STOP_RECORD)
+                status = NuixSensorState.CONNECTED
+                Log.e("Nuix", "RingV2[${address}] connected")
             }
             catch (e: Exception) {
                 Log.e("Nuix", "Error $e")

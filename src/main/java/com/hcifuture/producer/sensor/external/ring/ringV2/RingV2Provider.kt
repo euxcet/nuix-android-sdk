@@ -24,7 +24,7 @@ class RingV2Provider @Inject constructor(
     }
 
     @SuppressLint("MissingPermission")
-    override fun scan(): Flow<List<RingV2>> {
+    override fun scan(timeout: Long): Flow<List<RingV2>> {
         val aggregator = BleScanResultAggregator()
         return BleScanner(context).scan()
             .filter { (it.device.name?:"").startsWith("BCL") }

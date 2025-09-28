@@ -22,7 +22,7 @@ class LocationProvider @Inject constructor(
         return sensors.toList()
     }
 
-    override fun scan(): Flow<List<NuixSensor>> {
+    override fun scan(timeout: Long): Flow<List<NuixSensor>> {
         return listOf(sensors).asFlow()
     }
 
