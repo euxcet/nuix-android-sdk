@@ -11,6 +11,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.pytorch.IValue
 import org.pytorch.LiteModuleLoader
 import org.pytorch.Tensor
@@ -31,7 +33,6 @@ class GestureDetector @Inject constructor(
         "pinch_down", "pinch_up", "boom", "tap_up", "throw", "touch_left", "touch_right",
         "slide_up", "slide_down", "slide_left", "slide_right", "aid_slide_left", "aid_slide_right",
         "touch_up", "touch_down", "touch_ring", "long_touch_ring", "spread_ring")
-    private val calculateFrequency: Float = 30.0f
 
     private val data = Array(6) { FloatArray(200) { 0.0f } }
     private var pinchDown = false
@@ -40,14 +41,18 @@ class GestureDetector @Inject constructor(
         LiteModuleLoader.loadModuleFromAsset(assetManager, "gesture.ptl")
     }
 
+    private val mutex = Mutex()
+
+    private var loadDataJob: Job? = null
     private var detectJob: Job? = null
+
     fun start() {
         stop()
-        detectJob = scope.launch {
-            launch {
-                nuixSensorManager.defaultRing.getProxyFlow<RingImuData>(
-                    RingSpec.imuFlowName(nuixSensorManager.defaultRing)
-                )?.collect { imu ->
+        loadDataJob = scope.launch {
+            nuixSensorManager.defaultRing.getProxyFlow<RingImuData>(
+                RingSpec.imuFlowName(nuixSensorManager.defaultRing)
+            )?.collect { imu ->
+                mutex.withLock {
                     for (i in 0 until 6) {
                         for (j in 0 until 199) {
                             data[i][j] = data[i][j + 1]
@@ -56,15 +61,19 @@ class GestureDetector @Inject constructor(
                     }
                 }
             }
+        }
 
-            launch {
-                while (true) {
-                    delay((1000.0f / calculateFrequency).toLong())
+        detectJob = scope.launch {
+            nuixSensorManager.defaultRing.getProxyFlow<RingImuData>(
+                RingSpec.imuFlowName(nuixSensorManager.defaultRing)
+            )?.collect { imu ->
+                mutex.withLock {
                     val tensor = Tensor.fromBlob(
                         data.flatMap { it.toList() }.toFloatArray(),
                         longArrayOf(1, 6, 200)
                     )
-                    val output = model.forward(IValue.from(tensor)).toTensor().dataAsFloatArray
+                    val output =
+                        model.forward(IValue.from(tensor)).toTensor().dataAsFloatArray
                     val expSum = output.map { exp(it) }.sum()
                     val softmax = output.map { exp(it) / expSum }
                     val result = softmax.withIndex().maxByOrNull { it.value }?.index!!
@@ -74,19 +83,33 @@ class GestureDetector @Inject constructor(
                         } else if (labels[result] in arrayOf("pinch", "pinch_up")) {
                             pinchDown = false
                         }
-                        if (labels[result] in arrayOf("pinch", "middle_pinch", "clap", "snap",
-                                "tap_plane", "tap_air", "circle_clockwise", "circle_counterclockwise",
-                                "touch_ring", "touch_up", "touch_down")) {
+                        if (labels[result] in arrayOf(
+                                "pinch",
+                                "middle_pinch",
+                                "clap",
+                                "snap",
+                                "tap_plane",
+                                "tap_air",
+                                "circle_clockwise",
+                                "circle_counterclockwise",
+                                "touch_ring",
+                                "touch_up",
+                                "touch_down"
+                            )
+                        ) {
                             eventFlow.emit(labels[result])
                             for (i in 0 until 6) {
                                 for (j in 0 until 199) {
                                     data[i][j] = data[i][199]
                                 }
                             }
-                        } else if (labels[result] in arrayOf("wave_right", "wave_down", "wave_left", "wave_up",
+                        } else if (labels[result] in arrayOf(
+                                "wave_right", "wave_down", "wave_left", "wave_up",
                                 "pinch_down", "pinch_up", "push_forward", "index_flick",
                                 "push_forward", "index_flick",
-                                "slide_left", "slide_right")) {
+                                "slide_left", "slide_right"
+                            )
+                        ) {
                             eventFlow.emit(labels[result])
                         }
                     }
@@ -96,6 +119,9 @@ class GestureDetector @Inject constructor(
     }
 
     fun stop() {
+        if (loadDataJob?.isActive ==  true) {
+            loadDataJob?.cancel()
+        }
         if (detectJob?.isActive ==  true) {
             detectJob?.cancel()
         }
