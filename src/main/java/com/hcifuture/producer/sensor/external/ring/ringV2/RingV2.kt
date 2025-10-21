@@ -57,6 +57,7 @@ class RingV2(
     private val _statusFlow = MutableSharedFlow<RingV2StatusData>()
     private val _audioFlow = MutableSharedFlow<RingV2AudioData>()
     private val _ppgFlow = MutableSharedFlow<RingV2PPGData>()
+    private val _rssiFlow = MutableSharedFlow<Int>(replay = 1)
     override val name: String = "RING[${deviceName}|${address}]"
     override val macAddress = address
     override val flows = mapOf(
@@ -66,6 +67,7 @@ class RingV2(
         RingSpec.statusFlowName(this) to _statusFlow.asSharedFlow(),
         RingSpec.audioFlowName(this) to _audioFlow.asSharedFlow(),
         RingSpec.ppgFlowName(this) to _ppgFlow.asSharedFlow(),
+        RingSpec.rssiFlowName(this) to _rssiFlow.asSharedFlow(),
         NuixSensorSpec.lifecycleFlowName(this) to lifecycleFlow.asStateFlow(),
     )
     override val defaultCollectors: Map<String, Collector> = mapOf<String, Collector>(
@@ -79,6 +81,7 @@ class RingV2(
     private var count = 0
     private lateinit var connectJob: Job
     private var readJob: Job? = null
+    private var rssiJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val commandChannel: Channel<ByteArray> = Channel()
@@ -374,8 +377,32 @@ class RingV2(
         Log.e("Nuix", "Manual disconnect")
         connection?.disconnect()
         readJob?.cancel()
+        closeRssi()
         connectJob.cancel()
         status = NuixSensorState.DISCONNECTED
+    }
+
+    fun openRssi() {
+        if (rssiJob?.isActive == true) {
+            return
+        }
+        rssiJob = scope.launch {
+            while (status == NuixSensorState.CONNECTED) {
+                try {
+                    connection?.readRssi()?.let { rssi ->
+                        _rssiFlow.emit(rssi)
+                    }
+                } catch (e: Exception) {
+                    Log.e("Nuix", "RingV2[${address}] read rssi error: $e")
+                }
+                delay(2000)
+            }
+        }
+    }
+
+    fun closeRssi() {
+        rssiJob?.cancel()
+        rssiJob = null
     }
 
     suspend fun write(data: ByteArray) {

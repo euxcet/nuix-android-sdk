@@ -36,6 +36,10 @@ class RingSpec {
             return NuixSensorSpec.flowName(sensor, "status")
         }
 
+        fun rssiFlowName(sensor: NuixSensor): String {
+            return NuixSensorSpec.flowName(sensor, "rssi")
+        }
+
         fun refriedImuFlow(value: Any): RingImuData =
             FunctionUtils.reifiedValue<RingImuData>(value)
 
@@ -50,5 +54,8 @@ class RingSpec {
 
         fun refriedStatusFlow(value: Any): RingV2StatusData =
             FunctionUtils.reifiedValue<RingV2StatusData>(value)
+
+        fun refriedRssiFlow(value: Any): Int =
+            FunctionUtils.reifiedValue<Int>(value)
     }
 }
