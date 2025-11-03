@@ -320,6 +320,7 @@ class RingV2(
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
                 write(RingV2Spec.STOP_RECORD)
+                write(RingV2Spec.GET_BATTERY_LEVEL)
                 status = NuixSensorState.CONNECTED
                 Log.e("Nuix", "RingV2[${address}] connected")
             }
