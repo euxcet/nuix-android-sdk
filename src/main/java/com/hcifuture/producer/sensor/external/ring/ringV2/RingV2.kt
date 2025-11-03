@@ -36,6 +36,8 @@ import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import java.util.Arrays
 import kotlin.experimental.and
+import kotlin.math.max
+import kotlin.math.min
 
 @SuppressLint("MissingPermission")
 class RingV2(
@@ -153,7 +155,7 @@ class RingV2(
                             _statusFlow.emit(
                                 RingV2StatusData(
                                     type = RingV2StatusType.BATTERY_LEVEL,
-                                    batteryLevel = it.value[4].toInt(),
+                                    batteryLevel = max(min(it.value[4].toInt(), 100), 0),
                                 ))
                         }
                         cmd == 0x12.toByte() && subCmd == 0x1.toByte() -> {
