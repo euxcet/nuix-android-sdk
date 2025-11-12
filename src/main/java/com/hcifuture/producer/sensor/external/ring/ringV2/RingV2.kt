@@ -122,6 +122,7 @@ class RingV2(
 
                 connection!!.connectionState.onEach {
                     if (it == GattConnectionState.STATE_DISCONNECTED) {
+                        Log.e("Nuix", "state changed ${it}")
                         disconnect()
                     }
                 }.launchIn(scope)

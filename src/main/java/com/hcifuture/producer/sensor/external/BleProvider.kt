@@ -71,7 +71,7 @@ class BleProvider @Inject constructor(
         val deviceName = device.name ?: ""
         val deviceAddress = device.address
 
-        if (deviceName.startsWith("R0") || deviceName.startsWith("BCL")) {
+        if (deviceName.startsWith("BCL603S3L")) {
             Log.e("Nuix", "Ring found: $deviceName, address: $deviceAddress")
 
             val sensor = RingV2(context, deviceName.ifEmpty { "RingV2 Unnamed" }, deviceAddress)
