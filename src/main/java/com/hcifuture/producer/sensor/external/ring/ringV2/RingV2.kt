@@ -330,6 +330,7 @@ class RingV2(
                 }
                 status = NuixSensorState.CONNECTED
                 Log.e("Nuix", "RingV2[${address}] connected")
+                openRssi()
             }
             catch (e: Exception) {
                 Log.e("Nuix", "Error $e")
@@ -383,6 +384,7 @@ class RingV2(
     }
 
     fun openRssi() {
+        Log.e("Nuix", "command channel OPEN RSSI")
         if (rssiJob?.isActive == true) {
             return
         }
@@ -395,7 +397,7 @@ class RingV2(
                 } catch (e: Exception) {
                     Log.e("Nuix", "RingV2[${address}] read rssi error: $e")
                 }
-                delay(2000)
+                delay(500)
             }
         }
     }
