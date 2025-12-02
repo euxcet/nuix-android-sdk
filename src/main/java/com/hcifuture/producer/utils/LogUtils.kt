@@ -39,12 +39,19 @@ class LogUtils private constructor(val context: Context) {
         
         // 使用单生产者-消费者队列模式
         private val logChannel = Channel<LogEntry>(10000)
+        private var timeoutJob: kotlinx.coroutines.Job? = null
+        private var isInitialized = false
         
         /**
          * Initialize the FileLogUtils with application context
          */
         fun init(ctx: Context) {
+            if (isInitialized) {
+                Log.w("LogUtils", "LogUtils already initialized, skipping")
+                return
+            }
             instance = LogUtils(ctx)
+            isInitialized = true
             // 启动单一消费者协程处理日志写入
             scope.launch {
                 instance?.processLogEntries()
@@ -53,10 +60,30 @@ class LogUtils private constructor(val context: Context) {
 
         fun destroy() {
             instance?.apply {
+                // 关闭 channel，不再接受新日志
                 logChannel.close()
-                flushBuffer()
+                // 取消定时刷新任务
+                timeoutJob?.cancel()
+                
+                // 使用 runBlocking 确保所有日志都被写入
+                kotlinx.coroutines.runBlocking {
+                    // 等待 channel 中的所有日志被处理完成
+                    var waitCount = 0
+                    while (!logChannel.isEmpty && waitCount < 100) { // 最多等待 10 秒
+                        delay(100)
+                        waitCount++
+                    }
+                    
+                    // 最后刷新缓冲区并关闭 writer
+                    mutex.withLock {
+                        flushBuffer()
+                        writer?.close()
+                        writer = null
+                    }
+                }
             }
             instance = null
+            isInitialized = false
         }
 
         // 定义日志条目数据类（更新：增加对 throwable 支持）
@@ -64,11 +91,18 @@ class LogUtils private constructor(val context: Context) {
         
         private fun log(level: String, tag: String, message: String, throwable: Throwable? = null) {
             scope.launch {
-                logChannel.send(LogEntry(System.currentTimeMillis(), level, tag, message, throwable))
+                try {
+                    logChannel.send(LogEntry(System.currentTimeMillis(), level, tag, message, throwable))
+                } catch (e: Exception) {
+                    // Channel 已关闭，忽略
+                    if (BuildConfig.DEBUG) {
+                        Log.w("LogUtils", "Failed to send log, channel may be closed: ${e.message}")
+                    }
+                }
             }
             if (BuildConfig.DEBUG) {
                 // 同时输出到控制台
-                val pintLevel = when (level) {
+                val printLevel = when (level) {
                     VERBOSE -> Log.VERBOSE
                     DEBUG -> Log.DEBUG
                     INFO -> Log.INFO
@@ -76,7 +110,7 @@ class LogUtils private constructor(val context: Context) {
                     ERROR -> Log.ERROR
                     else -> Log.INFO
                 }
-                Log.println(pintLevel, tag, message)
+                Log.println(printLevel, tag, message)
             }
         }
 
@@ -104,6 +138,7 @@ class LogUtils private constructor(val context: Context) {
     private val dateTimeFormat by lazy { SimpleDateFormat("$DATE_FORMAT $TIME_FORMAT", Locale.getDefault()) }
     private var logBuffer = mutableListOf<String>()
     private var writer: BufferedWriter? = null
+    private var currentLogFileDate: String? = null
     private val mutex = Mutex()
 
     /**
@@ -124,10 +159,11 @@ class LogUtils private constructor(val context: Context) {
      */
     private suspend fun processLogEntries() {
         var lastFlushTime = System.currentTimeMillis()
-        val timeoutJob = scope.launch {
+        timeoutJob = scope.launch {
             while (true) {
+                delay(1000) // 每秒检查一次
                 val currentTime = System.currentTimeMillis()
-                if (logBuffer.isNotEmpty() && currentTime - lastFlushTime >= FLUSH_TIMEOUT_MS) {
+                if (currentTime - lastFlushTime >= FLUSH_TIMEOUT_MS) {
                     mutex.withLock {
                         if (logBuffer.isNotEmpty()) {
                             flushBuffer()
@@ -135,7 +171,6 @@ class LogUtils private constructor(val context: Context) {
                         }
                     }
                 }
-                delay(1000) // 每秒检查一次
             }
         }
 
@@ -161,7 +196,7 @@ class LogUtils private constructor(val context: Context) {
         }
 
         // 停止定时任务
-        timeoutJob.cancel()
+        timeoutJob?.cancel()
     }
 
     /**
@@ -169,9 +204,19 @@ class LogUtils private constructor(val context: Context) {
      */
     private fun flushBuffer() {
         try {
+            val currentDate = dateFormat.format(Date())
+            
+            // 检查日期是否变更，如果变更则关闭旧 writer 并创建新的
+            if (currentDate != currentLogFileDate) {
+                writer?.close()
+                writer = null
+                currentLogFileDate = currentDate
+            }
+            
             if (writer == null) {
                 writer = BufferedWriter(FileWriter(getLogFile(), true), BUFFER_SIZE)
             }
+            
             logBuffer.forEach { entry ->
                 writer?.write(entry)
             }
