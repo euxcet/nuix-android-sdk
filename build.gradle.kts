@@ -21,10 +21,10 @@ fun getLocalProperties(key: String): String {
 
 android {
     namespace = "com.hcifuture.producer"
-    compileSdk = 34
+    compileSdk = rootProject.extra.get("compileSdkVersion") as Int
 
     defaultConfig {
-        minSdk = 26
+        minSdk = rootProject.extra.get("minSdkVersion") as Int
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -52,12 +52,12 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = "17"
     }
 
     packaging {
@@ -69,6 +69,7 @@ android {
 //    aaptOptions {
 //        noCompress "tflite"
 //    }
+    ndkVersion = rootProject.extra.get("ndkVersion") as String
 }
 
 dependencies {
