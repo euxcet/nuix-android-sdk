@@ -312,6 +312,7 @@ class RingV2(
                                         type = 0x3C,
                                         raw = it.value.slice(4 until it.value.size)
                                     )
+                                )
                             }
                         }
                         cmd == 0x3D.toByte() -> {
