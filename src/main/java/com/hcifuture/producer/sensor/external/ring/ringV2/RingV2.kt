@@ -304,6 +304,16 @@ class RingV2(
                                 )
                             )
                         }
+                        cmd == 0x3C.toByte() -> {
+                            val subCmd = it.value[3]
+                            if (subCmd == 0x02.toByte()) {
+                                _ppgFlow.emit(
+                                    RingV2PPGData(
+                                        type = 0x3C,
+                                        raw = it.value.slice(4 until it.value.size)
+                                    )
+                            }
+                        }
                         cmd == 0x3D.toByte() -> {
                             _ppgFlow.emit(
                                 RingV2PPGData(
