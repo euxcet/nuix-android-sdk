@@ -43,7 +43,7 @@ import kotlin.math.min
 class RingV2(
     val context: Context,
     private val deviceName: String,
-    private val address: String,
+    val address: String,
 ) : NuixSensor() {
     private val scope = CoroutineScope(Dispatchers.IO)
     private var buffer = ByteArray(0)

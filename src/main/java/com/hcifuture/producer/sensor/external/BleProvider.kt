@@ -41,6 +41,8 @@ class BleProvider @Inject constructor(
 
     override val requireScan: Boolean = true
 
+//    private val targetDeviceSuffixes = setOf("7E35")
+
     private val _scanResults = MutableStateFlow<List<NuixSensor>>(emptyList())
     private var bluetoothAdapter: BluetoothAdapter? = null
     private var bluetoothLeScanner: BluetoothLeScanner? = null
@@ -70,9 +72,23 @@ class BleProvider @Inject constructor(
         val device = result.device
         val deviceName = device.name ?: ""
         val deviceAddress = device.address
+        val cleanMac = deviceAddress.replace(":", "").uppercase()
 
-        if (deviceName.startsWith("BCL603")) {
-            Log.e("Nuix", "Ring found: $deviceName, address: $deviceAddress")
+        val preference = context.getSharedPreferences("user", Context.MODE_PRIVATE)
+        val targetSuffix = preference.getString("mac_suffix", "") ?: ""
+
+        val isMatched = if (targetSuffix.isNotEmpty()) {
+            // 模式 A：用户输入了后缀 -> 执行精确匹配（忽略名称，只看 MAC）
+            val cleanMac = deviceAddress.replace(":", "").uppercase()
+            cleanMac.endsWith(targetSuffix.uppercase())
+        } else {
+            // 模式 B：用户没输入 -> 执行默认匹配逻辑（检查名称开头）
+            // 这里的 "BCL603" 是你最开始代码里的默认过滤条件
+            deviceName.startsWith("BCL")
+        }
+
+        if (isMatched) {
+            Log.i("Nuix", "Device matched (${if (targetSuffix.isNotEmpty()) "Static" else "Default"}): $deviceName, address: $deviceAddress")
 
             val sensor = RingV2(context, deviceName.ifEmpty { "RingV2 Unnamed" }, deviceAddress)
 
