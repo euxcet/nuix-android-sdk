@@ -168,6 +168,9 @@ class RingV2(
                                         .map { (l, h) ->
                                             (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat()
                                         }
+                                // Ring V2 payload does not currently expose a usable sensor-side timestamp
+                                // here, so we at least stamp each decoded batch with the handset receive time.
+                                val packetTimestamp = System.currentTimeMillis()
                                 for (i in data.indices step 6) {
                                     val imu = data.slice(i until i + 6).toMutableList()
 //                                    0 1 2 -> 1 2 0
@@ -189,7 +192,7 @@ class RingV2(
                                     _imuFlow.emit(
                                         RingImuData(
                                             data = imu,
-                                            timestamp = 0,
+                                            timestamp = packetTimestamp,
                                         )
                                     )
                                 }
@@ -422,11 +425,13 @@ class RingV2(
     }
 
     suspend fun openIMU() {
+        Log.e("Nuix", "command channel OPEN IMU")
         write(RingV2Spec.OPEN_6AXIS_IMU)
 //        commandChannel.send(RingV2Spec.OPEN_6AXIS_IMU)
     }
 
     suspend fun closeIMU() {
+        Log.e("Nuix", "command channel CLOSE IMU")
         write(RingV2Spec.CLOSE_6AXIS_IMU)
 //        commandChannel.send(RingV2Spec.CLOSE_6AXIS_IMU)
     }
