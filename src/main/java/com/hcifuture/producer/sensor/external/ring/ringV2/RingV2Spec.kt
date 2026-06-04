@@ -31,6 +31,16 @@ class RingV2Spec {
         val CLOSE_GREEN_PPG      = byteArrayOf(0x00, 0x00, 0x31, 0x02)
         val CLOSE_RED_PPG        = byteArrayOf(0x00, 0x00, 0x32, 0x02)
         val HID_SCREENSHOT       = byteArrayOf(0x00, 0x00, 0x98.toByte(), 0x00, 0x02, 0x02, 0x46.toByte(), 0x00, 0x02, 0x00, 0x00)
+        /**
+         * 时间校准探测命令。发送后 ring 通过 read characteristic 返回通知：
+         *   cmd=0x99, subCmd=0x00, bytes[4..7] = UInt32 LE ring tick counter (16384 Hz)
+         *
+         * 此命令已验证可用并用于时钟同步。
+         *
+         * 用法：BleWriteType.NO_RESPONSE 写入 write characteristic，等待 read characteristic
+         * 通知回调。手机端记录 sendElapsedMs 和 recvElapsedMs，与 ring ticks 组成往返测时样本。
+         */
+        val CALIB_TIME           = byteArrayOf(0x00, 0x00, 0x99.toByte(), 0x00)
 
         fun openGreenPPG(
             freq: Int = 0, // [0: 25hz, 1: 100hz]

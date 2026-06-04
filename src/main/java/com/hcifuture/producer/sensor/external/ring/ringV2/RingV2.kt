@@ -2,6 +2,7 @@ package com.hcifuture.producer.sensor.external.ring.ringV2
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import com.hcifuture.producer.recorder.Collector
 import com.hcifuture.producer.recorder.collectors.BytesDataCollector
@@ -17,6 +18,10 @@ import com.hcifuture.producer.sensor.data.RingV2StatusData
 import com.hcifuture.producer.sensor.data.RingV2StatusType
 import com.hcifuture.producer.sensor.data.RingV2TouchRawData
 import com.hcifuture.producer.sensor.external.ring.RingSpec
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,13 +32,12 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import no.nordicsemi.android.kotlin.ble.client.main.callback.ClientBleGatt
 import no.nordicsemi.android.kotlin.ble.client.main.service.ClientBleGattCharacteristic
-import no.nordicsemi.android.kotlin.ble.core.data.BleGattPhy
 import no.nordicsemi.android.kotlin.ble.core.data.BleWriteType
 import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
-import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import okio.ByteString.Companion.toByteString
 import java.util.Arrays
@@ -57,6 +61,7 @@ class RingV2(
     private val _statusFlow = MutableSharedFlow<RingV2StatusData>()
     private val _audioFlow = MutableSharedFlow<RingV2AudioData>()
     private val _ppgFlow = MutableSharedFlow<RingV2PPGData>()
+    private val _rssiFlow = MutableSharedFlow<Int>()
     override val name: String = "RING[${deviceName}|${address}]"
     override val macAddress = address
     override val flows = mapOf(
@@ -67,6 +72,7 @@ class RingV2(
         RingSpec.audioFlowName(this) to _audioFlow.asSharedFlow(),
         RingSpec.ppgFlowName(this) to _ppgFlow.asSharedFlow(),
         NuixSensorSpec.lifecycleFlowName(this) to lifecycleFlow.asStateFlow(),
+        "rssi" to _rssiFlow.asSharedFlow(),
     )
     override val defaultCollectors: Map<String, Collector> = mapOf<String, Collector>(
         RingSpec.imuFlowName(this) to
@@ -79,11 +85,36 @@ class RingV2(
     private var count = 0
     private lateinit var connectJob: Job
     private var readJob: Job? = null
+    private var rssiJob: Job? = null
     private val zeroGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val lastGyro: MutableList<Float> = mutableListOf(0.0f, 0.0f, 0.0f)
     private val commandChannel: Channel<ByteArray> = Channel()
     private val jobCreated = AtomicBoolean(false)
     private var isClicking = false
+
+    // RSSI
+    private val _lastRssiValue = AtomicInteger(0)
+    private val _lastRssiUpdateTime = AtomicLong(0)
+
+    // CALIB_TIME 响应回调
+    private var calibResponseListener: ((ringTicks: Long, recvElapsedUs: Long) -> Unit)? = null
+
+    // 校准响应回调接口（供 ImuRecordingModule 注册）
+    fun setCalibResponseListener(listener: ((Long, Long) -> Unit)?) {
+        calibResponseListener = listener
+    }
+
+    suspend fun sendCalibProbe(): Boolean {
+        return try {
+            writeCharacteristic.write(DataByteArray(RingV2Spec.CALIB_TIME), writeType = BleWriteType.NO_RESPONSE)
+            true
+        } catch (e: Exception) {
+            Log.e("Nuix", "send calib probe failed", e)
+            false
+        }
+    }
+
+    fun getLastRssiValue(): Int = _lastRssiValue.get()
 
     fun calibrate() {
         zeroGyro[0] = lastGyro[0]
@@ -158,43 +189,93 @@ class RingV2(
                                     }
                                 }
                             } else {
-                                // imu
-                                val acc_scale = 2048 * (1 shl ((it.value[4] / 4) and 3))
-                                val gyr_scale = 16.4f * (1 shl ((it.value[4] and 3).toInt()))
-//                                Log.e("Nuix", " " + acc_scale + " " + gyr_scale)
-                                val data =
-                                    it.value.slice(5 until 125)
-                                        .chunked(2)
-                                        .map { (l, h) ->
-                                            (l.toInt().and(0xFF) or h.toInt().shl(8)).toFloat()
-                                        }
-                                // Ring V2 payload does not currently expose a usable sensor-side timestamp
-                                // here, so we at least stamp each decoded batch with the handset receive time.
-                                val packetTimestamp = System.currentTimeMillis()
-                                for (i in data.indices step 6) {
-                                    val imu = data.slice(i until i + 6).toMutableList()
-//                                    0 1 2 -> 1 2 0
-                                    imu[0] *= 9.8f / acc_scale
-                                    imu[1] *= 9.8f / acc_scale
-                                    imu[2] *= 9.8f / acc_scale
-                                    imu[3] *= 3.14f / 180.0f / gyr_scale
-                                    imu[4] *= 3.14f / 180.0f / gyr_scale
-                                    imu[5] *= 3.14f / 180.0f / gyr_scale
-                                    imu[0] = imu[1].also { imu[1] = imu[0] }
-                                    imu[1] = imu[2].also { imu[2] = imu[1] }
-                                    imu[3] = imu[4].also { imu[4] = imu[3] }
-                                    imu[4] = imu[5].also { imu[5] = imu[4] }
-                                    imu[0] = -imu[0]
-                                    imu[2] = -imu[2]
-                                    imu[3] = -imu[3]
-                                    imu[5] = -imu[5]
+                                // ── IMU 数据解析 ──
+                                // 改动说明：
+                                // 1. 动态 header 计算替代硬编码 120 字节，适配任意 BLE 包大小
+                                // 2. 从包尾提取 ring 内部时间戳（16384 Hz tick），逐样本线性插值，
+                                //    替代原先整批共用 System.currentTimeMillis()
+                                // 3. 零点校准（zeroGyro）预留，当前通过 calibrate() 手动触发
+                                // 4. 缩放常量使用传感器 datasheet 精确值（32768/16, 32768/2000, π）
+                                val configByte = it.value[4].toInt() and 0xFF
+                                val accSensitivity = (configByte shr 2) and 0x03
+                                val gyrSensitivity = configByte and 0x03
+                                val accScale = (32768f / 16f) * Math.pow(2.0, accSensitivity.toDouble()).toFloat() / 9.8f
+                                val gyrScale = (32768f / 2000f) * Math.pow(2.0, gyrSensitivity.toDouble()).toFloat() / (Math.PI.toFloat() / 180f)
+
+                                val headLength = 4 + it.value.size % 2
+                                var imuStartTime = 0L
+                                var imuEndTime = 0L
+                                var imuPacketNum = 0
+
+                                if ((it.value.size - headLength) % 12 != 0) {
+                                    if (it.value.size >= headLength + 8) {
+                                        imuStartTime = ByteBuffer.wrap(
+                                            it.value.sliceArray(it.value.size - 8 until it.value.size - 4)
+                                        ).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+                                        imuEndTime = ByteBuffer.wrap(
+                                            it.value.sliceArray(it.value.size - 4 until it.value.size)
+                                        ).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+                                        imuPacketNum = (it.value.size - headLength - 8) / 12
+                                    }
+                                } else {
+                                    imuPacketNum = (it.value.size - headLength) / 12
+                                }
+
+                                var packetIndex = 0
+                                for (i in headLength until it.value.size step 12) {
+                                    if (it.value.size - i < 12) break
+
+                                    val accX = (it.value[i].toInt() and 0xFF) or ((it.value[i + 1].toInt() and 0xFF) shl 8)
+                                    val accY = (it.value[i + 2].toInt() and 0xFF) or ((it.value[i + 3].toInt() and 0xFF) shl 8)
+                                    val accZ = (it.value[i + 4].toInt() and 0xFF) or ((it.value[i + 5].toInt() and 0xFF) shl 8)
+                                    val gyrX = (it.value[i + 6].toInt() and 0xFF) or ((it.value[i + 7].toInt() and 0xFF) shl 8)
+                                    val gyrY = (it.value[i + 8].toInt() and 0xFF) or ((it.value[i + 9].toInt() and 0xFF) shl 8)
+                                    val gyrZ = (it.value[i + 10].toInt() and 0xFF) or ((it.value[i + 11].toInt() and 0xFF) shl 8)
+
+                                    val accXSigned = if (accX > 32767) accX - 65536 else accX
+                                    val accYSigned = if (accY > 32767) accY - 65536 else accY
+                                    val accZSigned = if (accZ > 32767) accZ - 65536 else accZ
+                                    val gyrXSigned = if (gyrX > 32767) gyrX - 65536 else gyrX
+                                    val gyrYSigned = if (gyrY > 32767) gyrY - 65536 else gyrY
+                                    val gyrZSigned = if (gyrZ > 32767) gyrZ - 65536 else gyrZ
+
+                                    val accXScaled = accXSigned.toFloat() / accScale
+                                    val accYScaled = accYSigned.toFloat() / accScale
+                                    val accZScaled = accZSigned.toFloat() / accScale
+                                    val gyrXScaled = gyrXSigned.toFloat() / gyrScale
+                                    val gyrYScaled = gyrYSigned.toFloat() / gyrScale
+                                    val gyrZScaled = gyrZSigned.toFloat() / gyrScale
+
+                                    val ringTicks = if (imuStartTime != 0L && imuEndTime != 0L && imuPacketNum > 1
+                                        && imuEndTime >= imuStartTime
+                                    ) {
+                                        imuStartTime + (imuEndTime - imuStartTime) * packetIndex / (imuPacketNum - 1)
+                                    } else {
+                                        0L
+                                    }
+
+                                    val imu = mutableListOf(
+                                        -1.0f * accYScaled,
+                                        accZScaled,
+                                        -1.0f * accXScaled,
+                                        -1.0f * gyrYScaled - zeroGyro[0],
+                                        gyrZScaled - zeroGyro[1],
+                                        -1.0f * gyrXScaled - zeroGyro[2],
+                                    )
+
+                                    lastGyro[0] = imu[3]
+                                    lastGyro[1] = imu[4]
+                                    lastGyro[2] = imu[5]
+
                                     count += 1
                                     _imuFlow.emit(
                                         RingImuData(
                                             data = imu,
-                                            timestamp = packetTimestamp,
+                                            timestamp = if (ringTicks > 0) ringTicks else System.currentTimeMillis(),
+                                            ringTicks = ringTicks,
                                         )
                                     )
+                                    packetIndex++
                                 }
                             }
                         }
@@ -315,6 +396,17 @@ class RingV2(
                                 )
                             )
                         }
+                        // 时间校准响应：ring 返回其内部 16384 Hz tick 计数器（UInt32 LE，bytes[4..7]）
+                        // 供上层 ImuRecordingModule 做往返测时，建立 ring ticks → phone elapsed 映射
+                        cmd == 0x99.toByte() && subCmd == 0x00.toByte() -> {
+                            val recvElapsedUs = SystemClock.elapsedRealtimeNanos() / 1_000L
+                            if (it.value.size >= 8) {
+                                val ringTimestampRaw = ByteBuffer.wrap(
+                                    it.value.sliceArray(4..7)
+                                ).order(ByteOrder.LITTLE_ENDIAN).int.toLong() and 0xFFFFFFFFL
+                                calibResponseListener?.invoke(ringTimestampRaw, recvElapsedUs)
+                            }
+                        }
                     }
                 }.launchIn(scope)
                 Log.e("Nuix", "RingV2[${address}] send commands")
@@ -375,10 +467,35 @@ class RingV2(
     override fun disconnect() {
         if (!disconnectable()) return
         Log.e("Nuix", "Manual disconnect")
+        stopRssiReading()
         connection?.disconnect()
         readJob?.cancel()
         connectJob.cancel()
         status = NuixSensorState.DISCONNECTED
+    }
+
+    // ── RSSI 监控 ──
+    // 轮询 BLE 信号强度并缓存到 _lastRssiValue，供 ImuRecordingModule 录制到 session 目录
+    fun startRssiReading(intervalMs: Long = 1000L) {
+        rssiJob?.cancel()
+        rssiJob = scope.launch {
+            while (isActive && connection?.isConnected == true) {
+                try {
+                    val rssi = connection?.readRssi()
+                    if (rssi != null) {
+                        _lastRssiValue.set(rssi)
+                        _lastRssiUpdateTime.set(System.currentTimeMillis())
+                        _rssiFlow.emit(rssi)
+                    }
+                } catch (_: Exception) { }
+                delay(intervalMs)
+            }
+        }
+    }
+
+    fun stopRssiReading() {
+        rssiJob?.cancel()
+        rssiJob = null
     }
 
     suspend fun write(data: ByteArray) {

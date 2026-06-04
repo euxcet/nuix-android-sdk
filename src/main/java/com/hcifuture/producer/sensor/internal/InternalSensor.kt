@@ -96,14 +96,20 @@ class InternalSensor(
 
     override fun onSensorChanged(event: SensorEvent?) {
         if (event != null) {
-            synchronized(this) {
-                scope.launch {
-                    _eventFlow.emit(InternalSensorData(
-                        event.sensor.type,
-                        event.values!!.toList(),
-                        event.timestamp,
-                    ))
-                }
+            // SensorEvent 由 Android 传感器管线复用，event.values 是同一个可变数组。
+            // 下面的 emit 会跨过 coroutine 边界；如果在 scope.launch 内再读取
+            // event.values，可能拿到后续传感器回调已经覆盖的新数组内容，但 timestamp
+            // 仍然是当前回调的时间戳。这里必须在回调同步阶段先做快照，确保传给
+            // accelerometer/gyroscope 配对逻辑的 values 和 SensorEvent.timestamp 属于同一帧。
+            val sensorType = event.sensor.type
+            val values = event.values!!.copyOf().toList()
+            val timestamp = event.timestamp
+            scope.launch {
+                _eventFlow.emit(InternalSensorData(
+                    sensorType,
+                    values,
+                    timestamp,
+                ))
             }
         }
     }
