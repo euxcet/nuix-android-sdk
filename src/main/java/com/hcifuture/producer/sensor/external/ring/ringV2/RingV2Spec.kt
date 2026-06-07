@@ -38,7 +38,7 @@ class RingV2Spec {
          * 此命令已验证可用并用于时钟同步。
          *
          * 用法：BleWriteType.NO_RESPONSE 写入 write characteristic，等待 read characteristic
-         * 通知回调。手机端记录 sendElapsedMs 和 recvElapsedMs，与 ring ticks 组成往返测时样本。
+         * 通知回调。手机端记录 sendElapsedUs 和 recvElapsedUs，与 ring ticks 组成往返测时样本。
          */
         val CALIB_TIME           = byteArrayOf(0x00, 0x00, 0x99.toByte(), 0x00)
 
