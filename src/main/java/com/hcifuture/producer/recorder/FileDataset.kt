@@ -112,8 +112,10 @@ class FileDataset(
         }
         val formatter = DateTimeFormatter.ofPattern("yyyy_MM_dd_HH_mm_ss")
         val timestamp = LocalDateTime.now().format(formatter)
+        val currentUserId = path.getOrNull(0) ?: userId
+        val currentTaskId = path.getOrNull(1) ?: taskId
         val files = collectors.map {
-            File(dir, "${userId}_${taskId}_${timestamp}_${it.suffixName}".replace(":", ""))
+            File(dir, "${currentUserId}_${currentTaskId}_${timestamp}_${it.suffixName}".replace(":", ""))
         }
         assert(files.all { !it.exists() })
         return files
