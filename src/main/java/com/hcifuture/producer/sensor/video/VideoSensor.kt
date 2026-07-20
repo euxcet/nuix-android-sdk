@@ -16,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 class VideoSensor(val context: Context): NuixSensor() {
@@ -107,6 +109,46 @@ class VideoSensor(val context: Context): NuixSensor() {
         if (status == NuixSensorState.CONNECTED) {
             mVideoServiceRemote?.startRecord(savedFile.absolutePath, withAudio)
         }
+    }
+
+    suspend fun awaitCameraReady(timeoutMs: Long): Boolean {
+        return withTimeoutOrNull(timeoutMs) {
+            while (mVideoServiceRemote?.videoState != VideoRecordProcessor.STATE_READY) {
+                delay(50)
+            }
+            true
+        } ?: false
+    }
+
+    suspend fun awaitRecording(timeoutMs: Long): Boolean {
+        return withTimeoutOrNull(timeoutMs) {
+            while (mVideoServiceRemote?.videoState != VideoRecordProcessor.STATE_RECORDING) {
+                if (mVideoServiceRemote?.videoState == VideoRecordProcessor.STATE_FAILED) {
+                    return@withTimeoutOrNull false
+                }
+                delay(50)
+            }
+            true
+        } ?: false
+    }
+
+    suspend fun stopRecordAndAwait(file: File, timeoutMs: Long): Boolean {
+        if (status != NuixSensorState.CONNECTED || mVideoServiceRemote == null) {
+            return false
+        }
+        mVideoServiceRemote?.stopRecord()
+        val finalized = withTimeoutOrNull(timeoutMs) {
+            while (true) {
+                when (mVideoServiceRemote?.videoState) {
+                    VideoRecordProcessor.STATE_FINALIZED -> return@withTimeoutOrNull true
+                    VideoRecordProcessor.STATE_FAILED -> return@withTimeoutOrNull false
+                }
+                delay(100)
+            }
+            @Suppress("UNREACHABLE_CODE")
+            false
+        } ?: false
+        return finalized && file.exists() && file.length() > 0L
     }
 
     fun stopRecord() {

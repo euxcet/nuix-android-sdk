@@ -8,6 +8,8 @@ import com.hcifuture.producer.recorder.UploaderProvider
 import com.hcifuture.producer.recorder.triggers.FixedDurationTrigger
 import com.hcifuture.producer.sensor.NuixSensorManager
 import com.hcifuture.producer.sensor.internal.InternalSensorSpec
+import com.hcifuture.producer.sensor.external.ring.RingSpec
+import com.hcifuture.producer.sensor.external.ring.ringV2.RingV2
 
 class CogRecorder {
     companion object {
@@ -36,8 +38,20 @@ class CogRecorder {
             nuixSensorManager.videos().onEach {
                 collectors.addAll(it.defaultCollectors.values)
             }
-            if (nuixSensorManager.defaultRing.target != null) {
-                collectors.addAll(nuixSensorManager.defaultRing.target!!.defaultCollectors.values)
+            nuixSensorManager.defaultRing.target?.let { ring ->
+                if (ring is RingV2) {
+                    // The 0x3C PPG container already carries ACC/GYR/temperature.
+                    // Do not create the independent 0x40 IMU file because this
+                    // recording mode never starts that stream and it stays empty.
+                    collectors.addAll(
+                        ring.defaultCollectors.filterKeys { key ->
+                            key == RingSpec.ppgFlowName(ring) ||
+                                key == RingSpec.rawPpgFlowName(ring)
+                        }.values
+                    )
+                } else {
+                    collectors.addAll(ring.defaultCollectors.values)
+                }
             }
             return Recorder(
                 collectors = collectors,

@@ -7,6 +7,7 @@ interface IVideoService {
      void bindCamera(int cameraLens, in Surface previewSurface, int width, int height);
      void switchCameraLens(int cameraLens);
      void startRecord(String savedFile, boolean withAudio);
+     int getVideoState();
      void updatePreview(in Surface previewSurface);
      void stopRecord();
      void unbindCamera();

@@ -33,8 +33,13 @@ class VideoCollector(
         return saveFile
     }
 
-    override suspend fun stopAsync(): File {
-        return stop()
+    override suspend fun stopAsync(): File? {
+        for (sensor in sensors) {
+            if (sensor is VideoSensor) {
+                return if (sensor.stopRecordAndAwait(saveFile, 15_000L)) saveFile else null
+            }
+        }
+        return null
     }
 
     /**

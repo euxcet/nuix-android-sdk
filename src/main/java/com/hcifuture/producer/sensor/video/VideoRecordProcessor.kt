@@ -20,6 +20,7 @@ import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
+import androidx.camera.video.VideoRecordEvent
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -33,6 +34,16 @@ class VideoRecordProcessor(
     surface: Surface?,
     executor: Executor
 ): LifecycleOwner,  Preview.SurfaceProvider {
+
+    companion object {
+        const val STATE_INITIALIZING = 0
+        const val STATE_READY = 1
+        const val STATE_STARTING = 2
+        const val STATE_RECORDING = 3
+        const val STATE_STOPPING = 4
+        const val STATE_FINALIZED = 5
+        const val STATE_FAILED = -1
+    }
 
     val TAG = "CameraRecordProcessor"
 
@@ -62,6 +73,9 @@ class VideoRecordProcessor(
     private var videoCapture: VideoCapture<Recorder>? = null
 
     private var currentRecording: Recording? = null
+    @Volatile
+    var videoState: Int = STATE_INITIALIZING
+        private set
 
     fun setSurface(surface: Surface?) {
         if (mSurface != surface) {
@@ -87,6 +101,9 @@ class VideoRecordProcessor(
         this.cameraLens = cameraLens
         updatePreview()
         updateVideoCapture()
+        if (!isRecordStart) {
+            videoState = STATE_READY
+        }
     }
 
     fun unbindCamera() {
@@ -129,6 +146,9 @@ class VideoRecordProcessor(
             initVideoCapture()
         }
         cameraProvider?.bindToLifecycle(this, cameraSelector, *useCases.toTypedArray())
+        if (isRecordStart) {
+            beginVideoRecording()
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -141,14 +161,28 @@ class VideoRecordProcessor(
         ).build()
         videoCapture = VideoCapture.withOutput(recorder)
         useCases.add(videoCapture!!)
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun beginVideoRecording() {
+        val capture = videoCapture ?: run {
+            videoState = STATE_FAILED
+            return
+        }
         val outputOptions = FileOutputOptions.Builder(recordSaveFile!!).build()
-        val pendingRecord = videoCapture!!.output.prepareRecording(context, outputOptions).apply {
+        val pendingRecord = capture.output.prepareRecording(context, outputOptions).apply {
             if (recordAudio) {
                 withAudioEnabled()
             }
         }
-        currentRecording = pendingRecord.start(recordExecutor) {
-
+        videoState = STATE_STARTING
+        currentRecording = pendingRecord.start(recordExecutor) { event ->
+            when (event) {
+                is VideoRecordEvent.Start -> videoState = STATE_RECORDING
+                is VideoRecordEvent.Finalize -> {
+                    videoState = if (event.hasError()) STATE_FAILED else STATE_FINALIZED
+                }
+            }
         }
     }
 
@@ -161,13 +195,12 @@ class VideoRecordProcessor(
     }
 
     fun stopRecord() {
-        videoCapture?.let {
-            useCases.remove(it)
-            cameraProvider?.unbind(it)
+        if (videoState == STATE_RECORDING || videoState == STATE_STARTING) {
+            videoState = STATE_STOPPING
+            currentRecording?.stop()
+        } else if (currentRecording == null) {
+            videoState = STATE_FAILED
         }
-        currentRecording?.close()
-        currentRecording = null
-        videoCapture = null
         isRecordStart = false
     }
 

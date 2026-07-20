@@ -113,6 +113,10 @@ class VideoForegroundService : Service() {
                 }
             }
 
+            override fun getVideoState(): Int {
+                return videoProcessor?.videoState ?: VideoRecordProcessor.STATE_INITIALIZING
+            }
+
             override fun updatePreview(previewSurface: Surface?) {
                 mainHandler.post {
                     videoProcessor?.setSurface(previewSurface)

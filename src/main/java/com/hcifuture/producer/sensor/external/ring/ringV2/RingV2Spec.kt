@@ -33,7 +33,14 @@ class RingV2Spec {
 
         // val START_RECORD         = byteArrayOf(0x00, 0x00, 0x3D, 0x00, 0x00, 0x01, 0x01, 0x03)
         // val STOP_RECORD          = byteArrayOf(0x00, 0x00, 0x3D, 0x06)
-        val START_RECORD         = byteArrayOf(0x00, 0x01, 0x3C, 0x00, 0x00, 0x64, 0x14, 0x14, 0x14, 0x01, 0x01)
+        // 0x3C combined samples keep PPG, IMU and temperature in one raw packet.
+        // Engineering test: request 50 Hz (0x32) to determine whether the
+        // deployed firmware accepts rates related to its native 25 Hz mode.
+        const val COLLECT_FREQUENCY_HZ = 50
+        val START_RECORD         = byteArrayOf(
+            0x00, 0x01, 0x3C, 0x00, 0x00, COLLECT_FREQUENCY_HZ.toByte(),
+            0x14, 0x14, 0x14, 0x01, 0x01
+        )
         val STOP_RECORD          = byteArrayOf(0x00, 0x00, 0x3C, 0x04)
 
         fun openGreenPPG(

@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import java.io.DataOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 
@@ -22,7 +23,7 @@ class BytesDataCollector(
 ) : Collector {
     private val scope = CoroutineScope(Dispatchers.Default)
     private val scopeIO = CoroutineScope(Dispatchers.IO)
-    var data = ByteArray(0)
+    private var data = ByteArrayOutputStream()
     private lateinit var job: Job
     private lateinit var saveFile: File
 
@@ -32,7 +33,7 @@ class BytesDataCollector(
             merge(*flows.toTypedArray())
                 .map { reifiedValue<BytesData>(it) }
                 .collect {
-                    data += it.toBytes()
+                    data.write(it.toBytes())
                 }
         }
     }
@@ -57,8 +58,8 @@ class BytesDataCollector(
 
     override suspend fun save() {
         DataOutputStream(FileOutputStream(saveFile)).use { outputStream ->
-            outputStream.write(data)
+            data.writeTo(outputStream)
         }
-        data = ByteArray(0)
+        data = ByteArrayOutputStream()
     }
 }

@@ -32,6 +32,10 @@ class RingSpec {
             return NuixSensorSpec.flowName(sensor, "ppg")
         }
 
+        fun rawPpgFlowName(sensor: NuixSensor): String {
+            return NuixSensorSpec.flowName(sensor, "ppg_ble_raw")
+        }
+
         fun statusFlowName(sensor: NuixSensor): String {
             return NuixSensorSpec.flowName(sensor, "status")
         }

@@ -17,7 +17,7 @@ class FileDataset(
     val taskId: String?,
 ) {
     private val dataFiles: MutableSet<File> = Collections.synchronizedSet(mutableSetOf())
-    private val zipFiles: MutableSet<File> = mutableSetOf()
+    private val zipFiles: MutableSet<File> = Collections.synchronizedSet(mutableSetOf())
     private val tmpDir: File
     init {
         if (!root.exists()) {
@@ -82,7 +82,7 @@ class FileDataset(
     }
 
     fun getDataFiles(count: Int): List<File> {
-        return dataFiles.take(count)
+        return synchronized(dataFiles) { dataFiles.take(count) }
     }
 
     fun getDataFile(): File {
@@ -90,7 +90,7 @@ class FileDataset(
     }
 
     fun getZipFiles(count: Int): List<File> {
-        return zipFiles.take(count)
+        return synchronized(zipFiles) { zipFiles.take(count) }
     }
 
     fun getZipFile(): File {
@@ -123,5 +123,26 @@ class FileDataset(
 
     fun prepareZipFile(): File {
         return File(tmpDir, "${System.currentTimeMillis()}.zip")
+    }
+
+    fun quarantineFiles(files: List<File>, reason: String): List<File> {
+        val safeReason = reason.replace(Regex("[^A-Za-z0-9_-]"), "_")
+        val failedDir = File(root, ".failed/${System.currentTimeMillis()}_$safeReason")
+        if (!failedDir.exists()) {
+            failedDir.mkdirs()
+        }
+        return files.mapNotNull { file ->
+            if (!file.exists()) {
+                null
+            } else {
+                val target = File(failedDir, file.name)
+                if (file.renameTo(target)) {
+                    target
+                } else {
+                    Log.e("Nuix", "Failed to quarantine ${file.absolutePath}")
+                    null
+                }
+            }
+        }
     }
 }

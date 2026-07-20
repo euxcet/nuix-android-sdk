@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.UUID
 
 sealed class RecorderEvent {
     data class Start(val sampleCount: Int) : RecorderEvent()
@@ -33,6 +34,7 @@ class Recorder(
     private var sampleId: Int = 0
     private var recordingSample: Boolean = false
     val eventFlow = MutableSharedFlow<RecorderEvent>()
+    val uploadEventFlow = uploader.eventFlow
     private var currentPath: Array<out String>? = null
 
     suspend fun start(vararg path: String) {
@@ -48,8 +50,27 @@ class Recorder(
     }
 
     fun stop() {
-        stopSample()
+        scope.launch {
+            val files = stopSampleAndAwait()
+            if (files.isNotEmpty()) {
+                uploader.enqueue("legacy-${UUID.randomUUID()}", files)
+            }
+        }
         trigger?.stop()
+    }
+
+    suspend fun stopAndAwait(): List<File> {
+        val files = stopSampleAndAwait()
+        trigger?.stop()
+        return files
+    }
+
+    fun enqueueForUpload(batchId: String, files: List<File>): Boolean {
+        return uploader.enqueue(batchId, files)
+    }
+
+    fun quarantineFiles(files: List<File>, reason: String): List<File> {
+        return fileDataset.quarantineFiles(files, reason)
     }
 
     private fun handleTriggerEvent(path: Array<out String>) {
@@ -58,7 +79,12 @@ class Recorder(
                 when (event) {
                     TriggerEvent.Idle -> {}
                     TriggerEvent.Begin -> startSample(path)
-                    TriggerEvent.End -> stopSample()
+                    TriggerEvent.End -> {
+                        val files = stopSampleAndAwait()
+                        if (files.isNotEmpty()) {
+                            uploader.enqueue("trigger-${UUID.randomUUID()}", files)
+                        }
+                    }
                 }
             }
         }
@@ -103,25 +129,21 @@ class Recorder(
         }
     }
 
-    private fun stopSample() {
+    private suspend fun stopSampleAndAwait(): List<File> {
         if (!recordingSample) {
-            return
+            return emptyList()
         }
         recordingSample = false
-        scope.launch {
-            val files = mutableListOf<File>()
-            for (collector in collectors) {
-                val file = collector.stopAsync()
-                file?.let {
-                    files.add(file)
-                }
-            }
-            eventFlow.emit(RecorderEvent.StopSample(sampleId, files))
-            delay(2000)
-            for (file in files) {
-                fileDataset.addDataFile(file)
+        val files = mutableListOf<File>()
+        for (collector in collectors) {
+            val file = collector.stopAsync()
+            file?.let {
+                files.add(file)
             }
         }
+        eventFlow.emit(RecorderEvent.StopSample(sampleId, files))
+        delay(2000)
+        return files
     }
 
     fun getStoragePath(): File {

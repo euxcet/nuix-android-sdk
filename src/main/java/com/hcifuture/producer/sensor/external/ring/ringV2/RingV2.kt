@@ -3,6 +3,7 @@ package com.hcifuture.producer.sensor.external.ring.ringV2
 import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
+import android.os.SystemClock
 import com.hcifuture.producer.recorder.Collector
 import com.hcifuture.producer.recorder.collectors.BytesDataCollector
 import com.hcifuture.producer.sensor.NuixSensor
@@ -13,6 +14,7 @@ import com.hcifuture.producer.sensor.data.RingTouchData
 import com.hcifuture.producer.sensor.data.RingTouchEvent
 import com.hcifuture.producer.sensor.data.RingV2AudioData
 import com.hcifuture.producer.sensor.data.RingV2PPGData
+import com.hcifuture.producer.sensor.data.RingV2RawNotifyData
 import com.hcifuture.producer.sensor.data.RingV2StatusData
 import com.hcifuture.producer.sensor.data.RingV2StatusType
 import com.hcifuture.producer.sensor.data.RingV2TouchRawData
@@ -35,6 +37,7 @@ import no.nordicsemi.android.kotlin.ble.core.data.GattConnectionState
 import no.nordicsemi.android.kotlin.ble.core.data.PhyOption
 import no.nordicsemi.android.kotlin.ble.core.data.util.DataByteArray
 import java.util.Arrays
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.experimental.and
 import kotlin.math.max
 import kotlin.math.min
@@ -56,6 +59,8 @@ class RingV2(
     private val _statusFlow = MutableSharedFlow<RingV2StatusData>()
     private val _audioFlow = MutableSharedFlow<RingV2AudioData>()
     private val _ppgFlow = MutableSharedFlow<RingV2PPGData>()
+    private val _rawPpgFlow = MutableSharedFlow<RingV2RawNotifyData>()
+    private val rawNotifySequence = AtomicLong(0)
     override val name: String = "RING[${deviceName}|${address}]"
     override val flows = mapOf(
         RingSpec.imuFlowName(this) to _imuFlow.asSharedFlow(),
@@ -64,6 +69,7 @@ class RingV2(
         RingSpec.statusFlowName(this) to _statusFlow.asSharedFlow(),
         RingSpec.audioFlowName(this) to _audioFlow.asSharedFlow(),
         RingSpec.ppgFlowName(this) to _ppgFlow.asSharedFlow(),
+        RingSpec.rawPpgFlowName(this) to _rawPpgFlow.asSharedFlow(),
         NuixSensorSpec.lifecycleFlowName(this) to lifecycleFlow.asStateFlow(),
     )
     override val defaultCollectors: Map<String, Collector> = mapOf<String, Collector>(
@@ -73,6 +79,8 @@ class RingV2(
 //                BytesDataCollector(listOf(this), listOf(_touchEventFlow.asSharedFlow()), "ringV2[${address}]TouchEvent.bin"),
         RingSpec.ppgFlowName(this) to
                 BytesDataCollector(listOf(this), listOf(_ppgFlow.asSharedFlow()), "ringV2[${address}]PPG.bin"),
+        RingSpec.rawPpgFlowName(this) to
+                BytesDataCollector(listOf(this), listOf(_rawPpgFlow.asSharedFlow()), "ringV2[${address}]BLE_RAW.bin"),
     )
     private var count = 0
     private lateinit var countJob: Job
@@ -305,8 +313,27 @@ class RingV2(
                             )
                         }
                         cmd == 0x3C.toByte() -> {
-                            val subCmd = it.value[3]
-                            if (subCmd == 0x02.toByte()) {
+                            val waveformSubCmd = it.value[3]
+                            if (waveformSubCmd == 0x01.toByte() || waveformSubCmd == 0x02.toByte()) {
+                                _rawPpgFlow.emit(
+                                    RingV2RawNotifyData(
+                                        appSequence = rawNotifySequence.getAndIncrement(),
+                                        elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos(),
+                                        wallClockMillis = System.currentTimeMillis(),
+                                        notify = it.value.slice(0 until it.value.size).toByteArray(),
+                                    )
+                                )
+                            }
+                            val dataNum = if (it.value.size > 5) {
+                                it.value[5].toInt() and 0xFF
+                            } else {
+                                0
+                            }
+                            val expectedWaveformSize = 14 + dataNum * 30
+                            if (waveformSubCmd == 0x02.toByte() &&
+                                dataNum > 0 &&
+                                it.value.size == expectedWaveformSize
+                            ) {
                                 _ppgFlow.emit(
                                     RingV2PPGData(
                                         type = 0x3C,
@@ -363,14 +390,17 @@ class RingV2(
         status = NuixSensorState.DISCONNECTED
     }
 
-    suspend fun write(data: ByteArray) {
-        try {
+    suspend fun write(data: ByteArray): Boolean {
+        val succeeded = try {
             writeCharacteristic.write(DataByteArray(data), writeType = BleWriteType.NO_RESPONSE)
+            true
         }
         catch (e: Exception) {
             Log.e("Nuix", "Error $e")
+            false
         }
         delay(50)
+        return succeeded
     }
 
     suspend fun openGreenPPG(

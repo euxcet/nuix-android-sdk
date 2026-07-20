@@ -11,7 +11,12 @@ class UploaderProvider @Inject constructor(
     @ApplicationContext val context: Context,
     private val httpService: HttpService
 ) {
+    private val uploaders = mutableMapOf<String, Uploader>()
+
+    @Synchronized
     fun create(fileDataset: FileDataset): Uploader {
-        return Uploader(context, fileDataset, httpService)
+        return uploaders.getOrPut(fileDataset.root.absolutePath) {
+            Uploader(context, fileDataset, httpService)
+        }
     }
 }
