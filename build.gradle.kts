@@ -12,7 +12,7 @@ plugins {
 
 fun getLocalProperties(key: String): String {
     val properties = Properties()
-    val file = File("local.properties")
+    val file = rootProject.file("local.properties")
     InputStreamReader(FileInputStream(file), Charsets.UTF_8).use { reader ->
         properties.load(reader)
     }
