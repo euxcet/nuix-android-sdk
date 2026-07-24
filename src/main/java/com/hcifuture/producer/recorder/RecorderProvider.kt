@@ -59,4 +59,9 @@ class RecorderProvider @Inject constructor(
             taskId,
         )
     }
+
+    fun getCogUploader(): Uploader {
+        val fileDataset = fileDatasetProvider.create("Cog")
+        return uploaderProvider.create(fileDataset)
+    }
 }

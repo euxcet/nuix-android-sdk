@@ -69,6 +69,10 @@ class Recorder(
         return uploader.enqueue(batchId, files)
     }
 
+    fun isUploadPending(batchId: String): Boolean {
+        return batchId in uploader.pendingBatchIds()
+    }
+
     fun quarantineFiles(files: List<File>, reason: String): List<File> {
         return fileDataset.quarantineFiles(files, reason)
     }

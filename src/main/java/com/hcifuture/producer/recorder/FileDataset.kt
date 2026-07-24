@@ -82,7 +82,7 @@ class FileDataset(
     }
 
     fun getDataFiles(count: Int): List<File> {
-        return synchronized(dataFiles) { dataFiles.take(count) }
+        return synchronized(dataFiles) { dataFiles.sortedBy { it.absolutePath }.take(count) }
     }
 
     fun getDataFile(): File {
@@ -90,7 +90,7 @@ class FileDataset(
     }
 
     fun getZipFiles(count: Int): List<File> {
-        return synchronized(zipFiles) { zipFiles.take(count) }
+        return synchronized(zipFiles) { zipFiles.sortedBy { it.name }.take(count) }
     }
 
     fun getZipFile(): File {

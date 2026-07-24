@@ -7,7 +7,9 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object HttpClientProvider {
-    private const val DEFAULT_TIMEOUT = 20000
+    private const val CONNECT_TIMEOUT_SECONDS = 30L
+    private const val READ_TIMEOUT_SECONDS = 120L
+    private const val WRITE_TIMEOUT_SECONDS = 300L
     private lateinit var httpService: HttpService
 
     val retrofit: HttpService
@@ -26,9 +28,9 @@ object HttpClientProvider {
     val okHttp: OkHttpClient
         get() {
             return OkHttpClient.Builder().run {
-                connectTimeout(DEFAULT_TIMEOUT.toLong(), TimeUnit.MILLISECONDS)
-                readTimeout(DEFAULT_TIMEOUT.toLong(), TimeUnit.MILLISECONDS)
-                writeTimeout(DEFAULT_TIMEOUT.toLong(), TimeUnit.MILLISECONDS)
+                connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+                writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 build()
             }
         }
