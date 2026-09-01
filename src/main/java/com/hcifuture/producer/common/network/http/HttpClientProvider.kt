@@ -1,6 +1,7 @@
 package com.hcifuture.producer.common.network.http
 
 import android.util.Log
+import com.hcifuture.producer.common.network.auth.DeviceCredentialStore
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
@@ -28,6 +29,14 @@ object HttpClientProvider {
     val okHttp: OkHttpClient
         get() {
             return OkHttpClient.Builder().run {
+                addInterceptor { chain ->
+                    val credentials = DeviceCredentialStore.get()
+                    val request = chain.request().newBuilder()
+                        .header("X-CogRing-Device-Id", credentials.deviceInstallationId)
+                        .header("Authorization", "Bearer ${credentials.token}")
+                        .build()
+                    chain.proceed(request)
+                }
                 connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
                 writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
