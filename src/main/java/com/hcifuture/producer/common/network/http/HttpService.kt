@@ -6,6 +6,7 @@ import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Call
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
@@ -20,6 +21,8 @@ interface HttpService {
     @POST("/record")
     fun uploadFile(
         @Url url:String,
+        @Header("X-CogRing-Upload-Id") uploadId: String,
+        @Header("X-CogRing-Content-SHA256") contentSha256: String,
         @Part file: MultipartBody.Part,
         @Part("path") path: RequestBody,
     ): Call<Any>
@@ -27,6 +30,8 @@ interface HttpService {
     @Multipart
     @POST("/record")
     fun uploadFile(
+        @Header("X-CogRing-Upload-Id") uploadId: String,
+        @Header("X-CogRing-Content-SHA256") contentSha256: String,
         @Part file: MultipartBody.Part,
         @Part("path") path: RequestBody,
     ): Call<Any>

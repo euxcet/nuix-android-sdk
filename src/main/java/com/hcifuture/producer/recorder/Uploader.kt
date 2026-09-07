@@ -23,7 +23,11 @@ import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.concurrent.ConcurrentHashMap
+import java.util.UUID
+import kotlin.math.max
+import kotlin.random.Random
 import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
@@ -31,6 +35,7 @@ import java.util.zip.ZipOutputStream
 sealed class UploadEvent {
     data class Succeeded(val batchId: String) : UploadEvent()
     data class Failed(val batchId: String, val message: String) : UploadEvent()
+    data class Blocked(val batchId: String, val message: String) : UploadEvent()
 }
 
 private data class PersistedUploadState(
@@ -38,11 +43,11 @@ private data class PersistedUploadState(
     val zipSources: Map<String, List<String>> = emptyMap(),
 )
 
-private enum class UploadAttempt {
-    SUCCESS,
-    FAILED,
-    NO_NETWORK,
-    NO_WORK,
+private sealed class UploadAttempt {
+    data object Success : UploadAttempt()
+    data class Retry(val minimumDelayMs: Long = 0L) : UploadAttempt()
+    data object NoNetwork : UploadAttempt()
+    data object NoWork : UploadAttempt()
 }
 
 class Uploader(
@@ -56,6 +61,7 @@ class Uploader(
         private const val IDLE_DELAY_MS = 2_000L
         private const val NO_NETWORK_DELAY_MS = 10_000L
         private val RETRY_DELAYS_MS = longArrayOf(5_000L, 15_000L, 30_000L, 60_000L)
+        private const val MAX_RETRY_AFTER_SECONDS = 3_600L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -67,6 +73,8 @@ class Uploader(
     val eventFlow = _eventFlow.asSharedFlow()
     private val pendingBatches = ConcurrentHashMap<String, MutableSet<String>>()
     private val zipSources = ConcurrentHashMap<String, Set<String>>()
+    private val blockedZips = ConcurrentHashMap<String, String>()
+    private val zipHashCache = ConcurrentHashMap<String, Pair<String, String>>()
 
     init {
         restoreState()
@@ -81,15 +89,15 @@ class Uploader(
             while (isActive) {
                 try {
                     compress()
-                    when (uploadNext()) {
-                        UploadAttempt.SUCCESS -> failureCount = 0
-                        UploadAttempt.FAILED -> {
-                            val delayIndex = failureCount.coerceAtMost(RETRY_DELAYS_MS.lastIndex)
+                    when (val attempt = uploadNext()) {
+                        UploadAttempt.Success -> failureCount = 0
+                        is UploadAttempt.Retry -> {
+                            val retryDelay = retryDelayWithJitter(failureCount, attempt.minimumDelayMs)
                             failureCount += 1
-                            delay(RETRY_DELAYS_MS[delayIndex])
+                            delay(retryDelay)
                         }
-                        UploadAttempt.NO_NETWORK -> delay(NO_NETWORK_DELAY_MS)
-                        UploadAttempt.NO_WORK -> {
+                        UploadAttempt.NoNetwork -> delay(NO_NETWORK_DELAY_MS)
+                        UploadAttempt.NoWork -> {
                             failureCount = 0
                             delay(IDLE_DELAY_MS)
                         }
@@ -125,8 +133,14 @@ class Uploader(
 
     /** Upload exactly one archive at a time so large videos do not compete for weak uplinks. */
     private fun uploadNext(): UploadAttempt {
-        val zip = fileDataset.getZipFiles(1).firstOrNull() ?: return UploadAttempt.NO_WORK
-        if (!NetworkUtils.isWifiConnected(context)) return UploadAttempt.NO_NETWORK
+        val zip = fileDataset.getZipFiles(Int.MAX_VALUE)
+            .firstOrNull { !blockedZips.containsKey(it.absolutePath) }
+            ?: return UploadAttempt.NoWork
+        if (!NetworkUtils.isWifiConnected(context)) return UploadAttempt.NoNetwork
+
+        val uploadId = zip.nameWithoutExtension
+        val contentSha256 = zipSha256(zip)
+            ?: return blockUpload(zip, "无法计算ZIP校验值")
 
         val filePart = MultipartBody.Part.createFormData(
             "file",
@@ -135,20 +149,26 @@ class Uploader(
         )
         val path = fileDataset.getFolderPath(zip).toRequestBody("text/plain".toMediaTypeOrNull())
         return try {
-            val response = httpService.uploadFile(filePart, path).execute()
+            val response = httpService.uploadFile(uploadId, contentSha256, filePart, path).execute()
             if (response.isSuccessful) {
-                if (completeUploadedZip(zip)) UploadAttempt.SUCCESS else UploadAttempt.FAILED
+                if (completeUploadedZip(zip)) UploadAttempt.Success else UploadAttempt.Retry()
             } else {
                 response.errorBody()?.close()
-                val message = "HTTP ${response.code()}"
+                val code = response.code()
+                val message = "HTTP $code"
                 notifyUploadFailed(zipSources[zip.absolutePath].orEmpty(), message)
-                UploadAttempt.FAILED
+                when {
+                    code == 408 || code == 425 || code == 429 || code in 500..599 -> {
+                        UploadAttempt.Retry(parseRetryAfterMillis(response.headers()["Retry-After"]))
+                    }
+                    else -> blockUpload(zip, message)
+                }
             }
         } catch (e: Exception) {
             val message = e.message ?: e.javaClass.simpleName
             Log.e(TAG, "Upload failed: $message")
             notifyUploadFailed(zipSources[zip.absolutePath].orEmpty(), message)
-            UploadAttempt.FAILED
+            UploadAttempt.Retry()
         }
     }
 
@@ -177,6 +197,8 @@ class Uploader(
         }
 
         // Keep the archive until the server has returned success and the local queue state is durable.
+        blockedZips.remove(zip.absolutePath)
+        zipHashCache.remove(zip.absolutePath)
         fileDataset.removeZipFile(zip)
         completedBatchIds.forEach { batchId ->
             _eventFlow.tryEmit(UploadEvent.Succeeded(batchId))
@@ -192,16 +214,49 @@ class Uploader(
         }
     }
 
+    private fun blockUpload(zip: File, message: String): UploadAttempt {
+        blockedZips[zip.absolutePath] = message
+        val sourcePaths = zipSources[zip.absolutePath].orEmpty()
+        for ((batchId, remainingPaths) in pendingBatches.entries) {
+            if (remainingPaths.any { it in sourcePaths }) {
+                _eventFlow.tryEmit(UploadEvent.Blocked(batchId, message))
+            }
+        }
+        Log.e(TAG, "Upload blocked for ${zip.name}: $message")
+        return UploadAttempt.NoWork
+    }
+
     @Synchronized
     private fun compress() {
-        val files = fileDataset.getDataFiles(10)
+        val assignedPaths = zipSources.values.flatten().toSet()
+        val pendingPaths = pendingBatches.values.flatten().toSet()
+
+        // Keep a capture batch together whenever possible. Legacy standalone files are still
+        // supported, but they are never mixed into a named capture batch.
+        val batchFiles = pendingBatches.entries
+            .sortedBy { it.key }
+            .asSequence()
+            .map { (_, paths) ->
+                paths.asSequence()
+                    .filterNot { it in assignedPaths }
+                    .map(::File)
+                    .toList()
+            }
+            .firstOrNull { candidates ->
+                candidates.isNotEmpty() && candidates.all { it.isFile && it.length() > 0L }
+            }
+        val files = batchFiles ?: fileDataset.getDataFiles(Int.MAX_VALUE)
+            .asSequence()
+            .filterNot { it.absolutePath in pendingPaths || it.absolutePath in assignedPaths }
+            .take(10)
+            .toList()
         if (files.isEmpty()) return
 
-        val zipFile = fileDataset.prepareZipFile()
-        val compressedFiles = mutableListOf<File>()
-        ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
-            for (file in files) {
-                try {
+        val uploadId = UUID.randomUUID().toString()
+        val zipFile = fileDataset.prepareZipFile(uploadId)
+        try {
+            ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { out ->
+                for (file in files.sortedBy { it.absolutePath }) {
                     FileInputStream(file).use { input ->
                         BufferedInputStream(input).use { origin ->
                             out.putNextEntry(ZipEntry(fileDataset.getPath(file)))
@@ -212,19 +267,20 @@ class Uploader(
                             }
                         }
                     }
-                    compressedFiles.add(file)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to compress ${file.absolutePath}", e)
                 }
             }
-        }
-
-        if (compressedFiles.isEmpty()) {
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create upload archive $uploadId", e)
             zipFile.delete()
             return
         }
 
-        val sourcePaths = compressedFiles.map { it.absolutePath }.toSet()
+        if (!isUsableZip(zipFile)) {
+            zipFile.delete()
+            return
+        }
+
+        val sourcePaths = files.map { it.absolutePath }.toSet()
         zipSources[zipFile.absolutePath] = sourcePaths
         fileDataset.addZipFile(zipFile)
         if (!persistState()) {
@@ -234,7 +290,7 @@ class Uploader(
         }
 
         // The durable queue now points to a complete ZIP, so source files can be reclaimed safely.
-        compressedFiles.forEach(fileDataset::removeDataFile)
+        files.forEach(fileDataset::removeDataFile)
     }
 
     @Synchronized
@@ -260,6 +316,8 @@ class Uploader(
                     }
                 } else {
                     zipSources.remove(zipPath)
+                    blockedZips.remove(zipPath)
+                    zipHashCache.remove(zipPath)
                     changed = true
                 }
             }
@@ -274,6 +332,40 @@ class Uploader(
         return runCatching {
             ZipFile(file).use { zip -> zip.entries().hasMoreElements() }
         }.getOrDefault(false)
+    }
+
+    private fun zipSha256(file: File): String? {
+        val cacheKey = "${file.length()}:${file.lastModified()}"
+        zipHashCache[file.absolutePath]?.let { (cachedKey, cachedHash) ->
+            if (cachedKey == cacheKey) return cachedHash
+        }
+        return runCatching {
+            val digest = MessageDigest.getInstance("SHA-256")
+            BufferedInputStream(FileInputStream(file)).use { input ->
+                val buffer = ByteArray(128 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+            }
+            digest.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }.also { hash ->
+                zipHashCache[file.absolutePath] = cacheKey to hash
+            }
+        }.onFailure { error ->
+            Log.e(TAG, "Failed to hash ${file.absolutePath}", error)
+        }.getOrNull()
+    }
+
+    private fun retryDelayWithJitter(failureCount: Int, minimumDelayMs: Long): Long {
+        val base = RETRY_DELAYS_MS[failureCount.coerceAtMost(RETRY_DELAYS_MS.lastIndex)]
+        val jittered = (base * Random.nextDouble(0.8, 1.2)).toLong()
+        return max(jittered, minimumDelayMs)
+    }
+
+    private fun parseRetryAfterMillis(value: String?): Long {
+        val seconds = value?.trim()?.toLongOrNull() ?: return 0L
+        return seconds.coerceIn(1L, MAX_RETRY_AFTER_SECONDS) * 1_000L
     }
 
     @Synchronized

@@ -3,12 +3,9 @@ package com.hcifuture.producer.recorder
 import android.util.Log
 import com.hcifuture.producer.common.utils.FileUtils.Companion.loadVisibleFile
 import java.io.File
-import java.text.SimpleDateFormat
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Collections
-import java.util.Date
-import java.util.Locale
 
 class FileDataset(
     val root: File,
@@ -102,7 +99,9 @@ class FileDataset(
     }
 
     fun getPath(file: File): String {
-        return file.relativeTo(root.parentFile!!).absolutePath
+        // ZIP entries must be relative (Cog/<user>/<task>/<file>). Using absolutePath
+        // here produced legacy entries such as /Cog/... and made safe servers reject them.
+        return file.relativeTo(root.parentFile!!).invariantSeparatorsPath
     }
 
     fun prepareFiles(path: Array<out String>, collectors: List<Collector>): List<File> {
@@ -121,8 +120,8 @@ class FileDataset(
         return files
     }
 
-    fun prepareZipFile(): File {
-        return File(tmpDir, "${System.currentTimeMillis()}.zip")
+    fun prepareZipFile(uploadId: String): File {
+        return File(tmpDir, "$uploadId.zip")
     }
 
     fun quarantineFiles(files: List<File>, reason: String): List<File> {
